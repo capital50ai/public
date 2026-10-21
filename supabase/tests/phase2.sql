@@ -68,12 +68,23 @@ do $$ declare ok boolean; begin
         raise exception 'positive fee allowed';
   exception when check_violation then null; end;
 end $$;
--- Oct 2026 only has a month-to-date figure: closing it must refuse
-do $$ begin
+-- the current month can't be closed before it ends; an mtd-only month can't be closed at all
+do $$ declare cur date := date_trunc('month', now() at time zone 'Asia/Karachi')::date; begin
   perform public.close_month('2026-08-01'); perform public.close_month('2026-09-01');
-  begin perform public.close_month('2026-10-01'); raise exception 'closed on an mtd figure';
+  begin perform public.close_month(cur); raise exception 'closed the current month';
+  exception when raise_exception then if sqlerrm = 'closed the current month' then raise; end if;
+    assert sqlerrm like '%has not ended yet%' or sqlerrm like 'Close % first%', sqlerrm; end;
+end $$;
+rollback;
+begin;
+insert into auth.users (id, phone, raw_user_meta_data) values (gen_random_uuid(), '923000000107', '{"full_name":"Test Seven"}');
+select pg_temp.deposit('923000000107', 'crypto', 5000, '2026-10-01');
+update public.strategy_returns set status = 'mtd' where ym = '2026-09-01' and strategy_id = (select id from public.strategies where slug = 'crypto');
+select pg_temp.deposit('923000000107', 'crypto', 5000, '2026-09-01');
+do $$ begin
+  begin perform public.close_month('2026-09-01'); raise exception 'closed on an mtd figure';
   exception when raise_exception then if sqlerrm = 'closed on an mtd figure' then raise; end if;
-    assert sqlerrm like 'No published crypto return for 2026-10%', sqlerrm; end;
+    assert sqlerrm like 'No published crypto return for 2026-09%', sqlerrm; end;
 end $$;
 rollback;
 

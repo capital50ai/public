@@ -77,6 +77,18 @@ returns taken from the bundled records. This keeps the shared demo link working 
 4. Demo account (created by `setup.sql`): mobile 300 1234567, password `Demo#2026`.
    `scripts/create-demo-user.mjs` can reset it from a machine that can reach Supabase.
 
+## Phase 5 (money out)
+
+- `payout_methods` (account numbers AES-256-GCM encrypted with `C50_DATA_KEY`; investors only ever see a
+  masked hint), `withdrawals`, setting `withdrawal_two_approvals_above` (default 100000).
+- Adding a method needs a verified KYC; the title must match the CNIC name; IBANs are mod-97 checked,
+  TRC20 addresses checksum-checked; usable after 24 hours.
+- `request_withdrawal()` re-checks KYC, method age/name, Rs 1,000 minimum, available balance (ledger minus
+  withdrawals in review) and an SMS code verified within 10 minutes; the amount is reserved at once.
+- Staff (`/admin/withdrawals`, owner/finance): approve (two different people above the threshold), reject
+  with a reason (shown to the investor), mark paid with a transaction reference. `pay_withdrawal()` writes the
+  ledger, split across holdings by value, dated the current month; it waits until last month is closed.
+
 ## Page delivery (mobile speed)
 
 `scripts/build-assets.mjs` runs before every build: it splits each template into a small HTML shell

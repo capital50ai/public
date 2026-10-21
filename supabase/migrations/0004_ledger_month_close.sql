@@ -140,8 +140,8 @@ begin
   if v_last is not null and p_ym <> (v_last + interval '1 month')::date then
     raise exception 'Close % first', to_char(v_last + interval '1 month', 'YYYY-MM');
   end if;
-  if p_ym > date_trunc('month', now() at time zone 'Asia/Karachi')::date then
-    raise exception 'Cannot close %: the month has not started', v_ym;
+  if p_ym >= date_trunc('month', now() at time zone 'Asia/Karachi')::date then
+    raise exception 'Cannot close %: the month has not ended yet', v_ym;
   end if;
 
   for h in

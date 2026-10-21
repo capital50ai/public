@@ -25,6 +25,17 @@ describe("buildAccount", () => {
     ]);
     expect(acc.events.map((e) => e.t)).toEqual(["in", "pr", "fe", "ls"]);
   });
+  it("shows a withdrawal split across holdings as one line", () => {
+    const two = new Map([["h1", "gold"], ["h2", "crypto"]]);
+    const acc = buildAccount([
+      row({ amount: 10000, meta: { day: 1 } }), row({ holding_id: "h2", amount: 5000, meta: { day: 1 } }),
+      row({ type: "withdrawal", amount: -2000, ym: "2026-10-01", ref_id: "w1", created_at: "2026-10-21T08:00:00Z", meta: { source: "withdrawal" } }),
+      row({ holding_id: "h2", type: "withdrawal", amount: -1000, ym: "2026-10-01", ref_id: "w1", created_at: "2026-10-21T08:00:00Z", meta: { source: "withdrawal" } }),
+    ], two, null, "2026-09");
+    expect(acc.events.filter((e) => e.t === "out")).toEqual([{ t: "out", ym: "2026-10", day: 21, id: "", amt: -3000 }]);
+    expect(acc.hold.gold.val).toBe(8000);
+    expect(acc.hold.crypto.val).toBe(4000);
+  });
   it("shows an empty account as one zero month", () => {
     expect(buildAccount([], slugOf, null, "2026-09").ledger).toEqual([{ ym: "2026-09", bal: 0, inv: 0, profit: 0, fee: 0 }]);
   });

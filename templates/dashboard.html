@@ -749,7 +749,7 @@ let firstName="Investor";try{firstName=(ME&&ME.name.split(/\s+/)[0])||sessionSto
 const ST={
   profile:ME?{name:ME.name,phone:ME.phone,email:ME.email,city:ME.city,since:ME.since}:store.get("profile",{name:firstName==="Investor"?"":firstName,phone:"",email:"",city:"",since:"2026-07"}),
   kyc:ME?ME.kyc:store.get("kyc",{status:"none",step:0,data:{},files:{}}),
-  methods:store.get("methods",[]),
+  methods:ME?ME.methods:store.get("methods",[]),
   tickets:store.get("tickets",[]),
   code:ME?ME.code:store.get("code",null),
   nominee:store.get("nominee",null)
@@ -772,6 +772,7 @@ const ACC=ACCOUNT||simulate([{ym:"2026-07",id:"kitchen",amt:25000},{ym:"2026-07"
 const H=Object.values(ACC.hold),ledger=ACC.ledger,firstYm=ledger[0].ym;
 const total=H.reduce((a,h)=>a+h.val,0),invested=H.reduce((a,h)=>a+h.inv,0),profit=H.reduce((a,h)=>a+h.profit,0),fees=H.reduce((a,h)=>a+h.fees,0);
 const mtdAmt=MTD?H.reduce((a,h)=>a+h.val*(MTD[h.id]||0)/100,0):0;
+const avail=ME&&ME.available!=null?ME.available:total; /* balance minus withdrawals already in review */
 
 /* ---------- preview affiliate: sample invited members × real returns ---------- */
 const MEMBERS=(ME?[]:[["Member 1","2026-07","kitchen",50000],["Member 2","2026-07","gold",25000],["Member 3","2026-07","crypto",15000],["Member 4","2026-08","kitchen",100000],["Member 5","2026-08","ecom",10000],["Member 6","2026-09","sat",30000],["Member 7","2026-09","kitchen",20000],["Member 8","2026-10","gold",5000],["Member 9","2026-10",null,0]])
@@ -820,7 +821,7 @@ function spk(vals,col,bars){const W=100,Hh=26,mx=Math.max(...vals.map(Math.abs),
   const lo=Math.min(...vals),hi=Math.max(...vals),X=i=>i/(vals.length-1||1)*W,Y=v=>Hh-2-(v-lo)/((hi-lo)||1)*(Hh-4);
   return`<svg viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" aria-hidden="true"><path d="${vals.map((v,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1)).join(" ")}" fill="none" stroke="${col}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`}
 const kpiCard=k=>`<div class="card kpi"><span class="label">${icon(k.i)}${k.l}</span><b>${k.v}</b><small>${k.s}</small>${k.sp||""}</div>`;
-const evMeta={pd:["clock","in","Deposit · awaiting confirmation"],in:["arrow-down-left","in","Deposit"],pr:["trending-up","pr","Monthly profit"],ls:["trending-down","ls","Monthly loss"],fe:["percent","fe","Fee · 2.5% of profit"],af:["gift","af","Affiliate commission"]};
+const evMeta={pd:["clock","in","Deposit · awaiting confirmation"],out:["arrow-up-right","fe","Withdrawal"],wd:["clock","fe","Withdrawal · in review"],in:["arrow-down-left","in","Deposit"],pr:["trending-up","pr","Monthly profit"],ls:["trending-down","ls","Monthly loss"],fe:["percent","fe","Fee · 2.5% of profit"],af:["gift","af","Affiliate commission"]};
 const evRow=e=>{const[ic,c,t]=evMeta[e.t];return`<div class="ev"><span class="b ${c}">${icon(ic)}</span><div><p>${t}</p><small>${e.id?B[e.id].name+" · ":""}${e.day} ${ymL(e.ym)}${e.r!=null?" · "+pct(e.r):""}${e.t==="af"?" · 15% of members' fees":""}</small></div><span class="a m ${e.amt<0?"neg":e.t==="in"?"":"pos"}">${e.amt>=0?"+":""}${Math.abs(e.amt)<100?rs2(e.amt):rs(e.amt)}</span></div>`};
 
 const C={mode:"acct",range:0,sel:new Set(H.map(h=>h.id))};
@@ -931,7 +932,8 @@ const mask=v=>v.length>8?v.slice(0,4)+" •••• "+v.slice(-4):v;
 function renderMethods(){const el=$("methods");if(!el)return;
   el.innerHTML=ST.methods.length?ST.methods.map((m,i)=>{const t=METHOD_TYPES[m.type],ready=Date.now()>=m.readyAt;return`<div class="meth"><span class="b">${t.b}</span><div><p>${t.n}${m.bank?" · "+esc(m.bank):""}</p><small>${esc(mask(m.acct))} · ${esc(m.title)}${m.title&&!nameMatch(m.title,displayName())?' · <span class="neg">name check pending</span>':""}</small><small>${ready?'<span class="pos">Ready for withdrawals</span>':"Usable from "+new Date(m.readyAt).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</small></div><button class="ib sm" data-del="${i}" aria-label="Remove">${icon("trash-2")}</button></div>`}).join("")
     :`<div class="empty">${icon("landmark")}<p>No payout method yet. Add a JazzCash, Easypaisa, bank or USDT account in your own name.</p></div>`;
-  $$("[data-del]",el).forEach(b=>b.onclick=()=>{ST.methods.splice(+b.dataset.del,1);save("methods");renderMethods();toast("Payout method removed")})}
+  $$("[data-del]",el).forEach(b=>b.onclick=()=>{const i=+b.dataset.del,go=()=>{ST.methods.splice(i,1);save("methods");renderMethods();toast("Payout method removed")};if(!ME)return go();
+    post("/api/payout-methods/"+ST.methods[i].id,null,"DELETE").then(j=>j.ok?go():toast(j.error))})}
 function methodSheet(){let type="jazz";
   const body=()=>`<h3>Add payout method</h3><p class="label">Must be in your own name — ${esc(displayName())}.</p>
     <div class="opts row4">${Object.entries(METHOD_TYPES).map(([k,t])=>`<button class="opt" aria-pressed="${k===type}" data-t="${k}"><span class="b">${t.b}</span><span>${t.n.replace(" (IBAN)","").replace(" (TRC20)","")}</span></button>`).join("")}</div>
@@ -944,10 +946,10 @@ function methodSheet(){let type="jazz";
     $("mSave").onclick=()=>{const a=$("mAcct").value.trim(),t=$("mTitle")?$("mTitle").value.trim():displayName();let ok=true;
       const e1=type==="bank"?(ibanOK(a)?"":"That IBAN doesn't check out. It should be 24 characters starting with PK."):type==="usdt"?(trcOK(a)?"":"TRC20 addresses start with T and are 34 characters."):(mobileOK(a)?"":"Enter an 11-digit number starting 03.");
       $("mErr1").textContent=e1;ok=!e1;if($("mErr2")){const e2=t.split(/\s+/).length<2?"Enter the full account title.":"";$("mErr2").textContent=e2;ok=ok&&!e2}
-      if(!ok)return;ST.methods.push({type,acct:type==="bank"?a.replace(/\s/g,"").toUpperCase():a.replace(/\s/g,""),title:t,bank:$("mBank")?$("mBank").value:"",readyAt:Date.now()+864e5});save("methods");close();renderMethods();toast("Saved — usable in 24 hours")}};
+      if(!ok)return;if(ME){saveMethod({type,acct:a,title:t,bank:$("mBank")?$("mBank").value:""});return}ST.methods.push({type,acct:type==="bank"?a.replace(/\s/g,"").toUpperCase():a.replace(/\s/g,""),title:t,bank:$("mBank")?$("mBank").value:"",readyAt:Date.now()+864e5});save("methods");close();renderMethods();toast("Saved — usable in 24 hours")}};
   open(body());bind()}
 function initWallet(){
-  $("wAvail").textContent=rs(total);$("wInv").textContent=rs(invested);$("wAff").textContent=rs2(affTotal);
+  $("wAvail").textContent=rs(avail);$("wInv").textContent=rs(invested);$("wAff").textContent=rs2(affTotal);
   $("wRules").innerHTML=[["shield-check",`Identity verified (CNIC) — ${kycOK()?'<span class="pos">done</span>':'<a href="#kyc">not yet</a>'}`],["landmark","Only to accounts in your own name; title is checked against your CNIC"],["clock","New payout methods unlock after 24 hours"],["banknote",`Minimum withdrawal ${rs(MIN_WD)}`],["receipt","Processing time and any withdrawal fee are published before launch"]].map(([i,t])=>`<li>${icon(i)}<span>${t}</span></li>`).join("");
   renderMethods();$("addMethod").onclick=methodSheet;
   $("stmts").innerHTML=[...ledger].reverse().map(L=>`<div class="stm"><span class="b">${icon("file-text")}</span><div><p>${ymL(L.ym)}</p><small>Closing <span class="m">${rs(L.bal)}</span> · profit <span class="m">${rs(L.profit)}</span></small></div><button class="btn sm" data-month="${L.ym}">${icon("download")}CSV</button></div>`).join("");
@@ -955,13 +957,20 @@ function initWallet(){
   let f="all",n=10;const render=()=>{const list=events.filter(e=>f==="all"||e.t===f||(f==="pr"&&e.t==="ls"));$("tl").innerHTML=list.slice(0,n).map(evRow).join("")||`<p class="label" style="padding:12px 0">Nothing here yet.</p>`;$("tlMore").hidden=list.length<=n};
   $$("#actF button").forEach(b=>b.onclick=()=>{f=b.dataset.f;n=10;$$("#actF button").forEach(x=>x.setAttribute("aria-pressed",x===b));render()});$("tlMore").onclick=()=>{n+=10;render()};render()}
 function statement(ym){const rows=[["Capital 50 AI — account statement"],["Investor",displayName()],["Period",ym?ymL(ym):"All"],["Note",ACCOUNT?"Account record from the Capital 50 AI ledger; published monthly returns":"Preview: sample deposits, published monthly returns"],[],["Month","Strategy","Type","Return %","Amount (PKR)"]];
-  [...events].filter(e=>e.t!=="pd"&&(!ym||e.ym===ym)).sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(e=>rows.push([ymL(e.ym),e.id?B[e.id].name:"Affiliate",{in:"Deposit",pr:"Profit",ls:"Loss",fe:"Fee",af:"Affiliate commission"}[e.t],e.r??"",Math.round(e.amt*100)/100]));
+  [...events].filter(e=>e.t!=="pd"&&e.t!=="wd"&&(!ym||e.ym===ym)).sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(e=>rows.push([ymL(e.ym),e.id?B[e.id].name:"Affiliate",{in:"Deposit",out:"Withdrawal",pr:"Profit",ls:"Loss",fe:"Fee",af:"Affiliate commission"}[e.t],e.r??"",Math.round(e.amt*100)/100]));
   const L=ym?ledger.find(x=>x.ym===ym):ledger[ledger.length-1];if(L)rows.push([],["Closing balance","","","",Math.round(L.bal)]);
   dl(`capital50-statement-${ym||"all"}.csv`,csv(rows));toast("Statement downloaded")}
 $$("[data-stmt]").forEach(b=>b.onclick=()=>statement());
 
 /* deposit / withdraw sheets */
 const PAY=[["JC","JazzCash"],["EP","Easypaisa"],["BK","Bank transfer"],["₮","USDT (TRC20)"]];
+/* live payouts: saved, checked and approved on the server */
+async function post(url,body,method="POST"){try{const r=await fetch(url,{method,headers:{"content-type":"application/json"},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));return r.ok?{ok:true,...j}:{ok:false,error:j.error||"Something went wrong. Please try again.",field:j.field}}catch(e){return{ok:false,error:"No connection. Please try again."}}}
+async function saveMethod(m){const b=$("mSave");b.disabled=true;const j=await post("/api/payout-methods",m);b.disabled=false;
+  if(!j.ok){if(j.field&&$(j.field))$(j.field).textContent=j.error;else toast(j.error);return}ST.methods.push(j.method);close();renderMethods();toast("Saved — usable in 24 hours")}
+async function startWithdraw(amount,m){if(!m)return toast("Choose a payout method");const b=$("goM");b.disabled=true;const s=await post("/api/withdrawals/otp");b.disabled=false;if(!s.ok)return toast(s.error);
+  otpSheet(`Withdraw ${rs(amount)} to ${mask(m.acct)}`,async code=>{toast("Checking…");const j=await post("/api/withdrawals",{amount,method_id:m.id,code});
+    if(!j.ok)return toast(j.error);toast("Withdrawal requested. We'll review it shortly.");setTimeout(()=>location.reload(),1600)})}
 const PAYKEY=["jazzcash","easypaisa","bank","usdt"],payOn=i=>!ME||!ME.pay||ME.pay.methods[PAYKEY[i]],payFirst=()=>Math.max(0,PAY.findIndex((_,i)=>payOn(i)));
 /* live deposits: the server says how to pay; the balance only changes once the payment is confirmed */
 async function startDeposit(amount,into,method){const b=$("goM"),reset=m=>{$("amtErr").textContent=m;b.disabled=false;b.textContent="Continue"};b.disabled=true;b.textContent="Starting…";let j={};
@@ -975,7 +984,7 @@ function bankSheet(j){const a=j.account||{};open(`<h3>Bank transfer</h3>${j.sand
 function moneySheet(kind,into){const dep=kind==="deposit";
   if(!dep&&!kycOK()){open(`<div class="lockd">${img("kyc","art")}<h3>Verify to withdraw</h3><p class="label">Withdrawals unlock after your CNIC is verified. It takes about 3 minutes.</p><a class="btn pri full" href="#kyc" data-x>Start verification</a></div>`);return}
   if(!dep&&!ST.methods.length){open(`<div class="lockd">${img("withdraw","art")}<h3>Add a payout method</h3><p class="label">Add a JazzCash, Easypaisa, bank or USDT account in your own name first.</p><button class="btn pri full" id="goAdd">Add payout method</button></div>`);$("goAdd").onclick=methodSheet;return}
-  open(`<h3>${dep?"Add money":"Withdraw"}</h3><p class="label">${dep?"Minimum Rs 5,000 per strategy. No fee on deposits.":"Available: "+rs(total)}</p>
+  open(`<h3>${dep?"Add money":"Withdraw"}</h3><p class="label">${dep?"Minimum Rs 5,000 per strategy. No fee on deposits.":"Available: "+rs(avail)}</p>
     <div class="amt"><span>Rs</span><input id="amt" inputmode="numeric" value="${dep?"10,000":""}" placeholder="0" aria-label="Amount"></div>
     <div class="qk">${(dep?[5000,10000,25000,50000,100000]:[.25,.5,1]).map(v=>`<button data-q="${v}">${dep?nf.format(v):v===1?"All":v*100+"%"}</button>`).join("")}</div>
     ${dep?`<label class="label">Into</label><select id="into" class="sel" style="margin:6px 0 4px">${BOTS.map(b=>`<option value="${b.id}" ${b.id===into?"selected":""}>${b.name}</option>`).join("")}</select>`
@@ -985,17 +994,17 @@ function moneySheet(kind,into){const dep=kind==="deposit";
     <button class="btn pri full" id="goM" style="height:50px">${dep?"Continue":"Review withdrawal"}</button>
     ${ME&&dep?`<p class="fine" style="text-align:center">${ME.pay&&ME.pay.mode==="sandbox"?"Test mode: payments use test accounts only. ":""}Added once your payment is confirmed. Money paid this month starts earning on the 1st of next month.</p>`:`<p class="fine" style="text-align:center">Deposits and withdrawals open at launch. Timing and any transfer fees are published first.</p>`}`);
   const A=$("amt"),val=()=>+A.value.replace(/\D/g,"")||0;
-  const sum=()=>{const v=val();$("sum").innerHTML=dep?`<div><span>Amount</span><b>${rs(v)}</b></div><div><span>Deposit fee</span><b>None</b></div><div><span>Fee on profit</span><b>2.5% of monthly profit</b></div>`:`<div><span>Amount</span><b>${rs(v)}</b></div><div><span>Left invested</span><b>${rs(Math.max(0,total-v))}</b></div><div><span>Transfer fee</span><b>Published before launch</b></div>`;
-    $("amtErr").textContent=dep?(v&&v<MIN_DEP?"Minimum deposit is Rs 5,000.":""):(v>total?"That's more than your available balance.":v&&v<MIN_WD?"Minimum withdrawal is Rs 1,000.":"");$("goM").disabled=dep?v<MIN_DEP:(v<MIN_WD||v>total)};
+  const sum=()=>{const v=val();$("sum").innerHTML=dep?`<div><span>Amount</span><b>${rs(v)}</b></div><div><span>Deposit fee</span><b>None</b></div><div><span>Fee on profit</span><b>2.5% of monthly profit</b></div>`:`<div><span>Amount</span><b>${rs(v)}</b></div><div><span>Left invested</span><b>${rs(Math.max(0,avail-v))}</b></div><div><span>Transfer fee</span><b>Published before launch</b></div>`;
+    $("amtErr").textContent=dep?(v&&v<MIN_DEP?"Minimum deposit is Rs 5,000.":""):(v>avail?"That's more than your available balance.":v&&v<MIN_WD?"Minimum withdrawal is Rs 1,000.":"");$("goM").disabled=dep?v<MIN_DEP:(v<MIN_WD||v>avail)};
   A.oninput=()=>{const d=A.value.replace(/\D/g,"").slice(0,9);A.value=d?nf.format(+d):"";sum()};
-  $$("[data-q]",$("layer")).forEach(b=>b.onclick=()=>{const q=+b.dataset.q;A.value=nf.format(Math.round(dep?q:total*q));sum()});
+  $$("[data-q]",$("layer")).forEach(b=>b.onclick=()=>{const q=+b.dataset.q;A.value=nf.format(Math.round(dep?q:avail*q));sum()});
   $$("[data-mt]",$("layer")).forEach(b=>b.onclick=()=>$$("[data-mt]",$("layer")).forEach(x=>x.setAttribute("aria-pressed",x===b)));
-  $("goM").onclick=()=>{if(dep&&ME){const s=$$("[data-mt]",$("layer")).find(x=>x.getAttribute("aria-pressed")==="true");startDeposit(val(),$("into").value,PAYKEY[s?+s.dataset.mt:payFirst()]);return}if(dep){close();toast("Deposits open at launch — we'll notify you");return}otpSheet(`Withdraw ${rs(val())}`,()=>toast("Withdrawals open at launch. In the live app this request goes to review."))};sum()}
+  $("goM").onclick=()=>{if(dep&&ME){const s=$$("[data-mt]",$("layer")).find(x=>x.getAttribute("aria-pressed")==="true");startDeposit(val(),$("into").value,PAYKEY[s?+s.dataset.mt:payFirst()]);return}if(dep){close();toast("Deposits open at launch — we'll notify you");return}if(ME){startWithdraw(val(),ST.methods[+$("to").value]);return}otpSheet(`Withdraw ${rs(val())}`,()=>toast("Withdrawals open at launch. In the live app this request goes to review."))};sum()}
 function otpSheet(title,done){open(`<h3>Confirm</h3><p class="label">${esc(title)}. Enter the 6-digit code sent to your phone.</p><div class="otp" id="otp">${Array.from({length:6},(_,i)=>`<input inputmode="numeric" maxlength="1" aria-label="Digit ${i+1}" ${i?"":'autocomplete="one-time-code"'}>`).join("")}</div><button class="btn pri full" id="otpGo" disabled style="margin-top:14px">Confirm</button>`);
   const bx=$$("#otp input");const sync=()=>{$("otpGo").disabled=bx.some(b=>!b.value)};
   bx.forEach((b,i)=>{b.oninput=()=>{b.value=b.value.replace(/\D/g,"").slice(-1);if(b.value&&bx[i+1])bx[i+1].focus();sync()};b.onkeydown=e=>{if(e.key==="Backspace"&&!b.value&&bx[i-1])bx[i-1].focus()};
     b.onpaste=e=>{const d=(e.clipboardData.getData("text")||"").replace(/\D/g,"").slice(0,6);if(!d)return;e.preventDefault();d.split("").forEach((c,k)=>{if(bx[k])bx[k].value=c});sync()}});
-  bx[0].focus();$("otpGo").onclick=()=>{close();done()}}
+  bx[0].focus();$("otpGo").onclick=()=>{const c=bx.map(b=>b.value).join("");close();done(c)}}
 document.addEventListener("click",e=>{const b=e.target.closest("[data-sheet]");if(!b||b.closest("#sgrid"))return;moneySheet(b.dataset.sheet)});
 
 /* =====================================================================
@@ -1179,7 +1188,7 @@ const NOTES=(()=>{const last=months[months.length-1],k=recAt("kitchen",last),top
   if(affByMonth[last])n.push({i:"gift",t:"Affiliate commission credited",s:`${rs2(affByMonth[last])} from your members' ${ymL(last)} fees`,h:"#affiliate"});
   n.push({i:"users",t:"New member joined with your link",s:"Member 9 · not invested yet",h:"#affiliate"});
   if(MTD)n.push({i:"activity",t:`${ymL(MTD.ym)} so far`,s:BOTS.filter(b=>MTD[b.id]!=null).slice(0,3).map(b=>`${b.name.replace(" AI","")} ${pct(MTD[b.id])}`).join(" · "),h:"#overview"});
-  if(!kycOK())n.push({i:"shield-alert",t:"Verify your identity",s:"Needed before withdrawals",h:"#kyc"});return n})();
+  if(!kycOK())n.push({i:"shield-alert",t:"Verify your identity",s:"Needed before withdrawals",h:"#kyc"});(ME&&ME.notices||[]).forEach(x=>n.push(x));return n})();
 let readN=store.get("read",false);$("bellDot").hidden=readN;
 $("bell").onclick=()=>{open(`<div class="dh"><h3>Notifications</h3><button class="ib" data-x aria-label="Close">${icon("x")}</button></div>`+NOTES.map((x,i)=>`<a class="nt ${!readN&&i<3?"unread":""}" href="${x.h}" data-x><span class="b">${icon(x.i)}</span><div><p>${x.t}</p><small>${x.s}</small></div></a>`).join(""),"drawer");readN=true;store.set("read",true);$("bellDot").hidden=true};
 

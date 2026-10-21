@@ -13,6 +13,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <nav className="flex items-center gap-5 text-sm text-slate-400">
           <Link href="/admin/kyc" className="hover:text-white">Identity checks</Link>
           <Link href="/admin/deposits" className="hover:text-white">Deposits</Link>
+          <Link href="/admin/withdrawals" className="hover:text-white">Withdrawals</Link>
           <a href="/api/admin/logout" className="hover:text-white">Log out</a>
         </nav>
       </header>

@@ -38,3 +38,26 @@ describe("NOWPayments signature", () => {
     expect(nowpaymentsVerify(body, sig, "wrong")).toBe(false);
   });
 });
+
+import { accountHint, ibanOK, nameMatch, trc20OK } from "../lib/payouts";
+
+describe("payout account checks", () => {
+  it("validates Pakistani IBANs with the mod-97 check digit", () => {
+    expect(ibanOK("PK36 SCBL 0000 0011 2345 6702")).toBe(true);
+    expect(ibanOK("PK36SCBL0000001123456703")).toBe(false); // one digit changed
+    expect(ibanOK("GB82WEST12345698765432")).toBe(false);
+  });
+  it("validates TRC20 addresses including the checksum", () => {
+    expect(trc20OK("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t")).toBe(true); // USDT contract address
+    expect(trc20OK("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6u")).toBe(false);
+    expect(trc20OK("0x1234")).toBe(false);
+  });
+  it("matches titles to the CNIC name like the dashboard does", () => {
+    expect(nameMatch("Sara Khan", "Sara Khan Ahmed")).toBe(true);
+    expect(nameMatch("SARA K. AHMED", "Sara Khan Ahmed")).toBe(true);
+    expect(nameMatch("Sara Ali", "Sara Khan Ahmed")).toBe(false);
+  });
+  it("masks accounts", () => {
+    expect(accountHint("03001234567")).toBe("0300 •••• 4567");
+  });
+});

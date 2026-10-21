@@ -3,6 +3,7 @@
 
 export type LedgerRow = {
   holding_id: string | null;
+  ref_id?: string | null;
   type: string;
   amount: number | string;
   ym: string; // YYYY-MM-DD, first of month
@@ -11,7 +12,7 @@ export type LedgerRow = {
 };
 
 type Hold = { id: string; inv: number; val: number; profit: number; fees: number };
-type Event = { t: "in" | "out" | "pr" | "ls" | "fe" | "pd"; ym: string; day: number; id: string; amt: number; r?: number };
+type Event = { t: "in" | "out" | "pr" | "ls" | "fe" | "pd" | "wd"; ym: string; day: number; id: string; amt: number; r?: number };
 type Month = { ym: string; bal: number; inv: number; profit: number; fee: number };
 export type Account = { hold: Record<string, Hold>; events: Event[]; ledger: Month[] };
 
@@ -43,6 +44,7 @@ export function buildAccount(rows: LedgerRow[], slugOf: Map<string, string>, las
   const hold: Record<string, Hold> = {};
   const events: Event[] = [];
   const byMonth = new Map<string, { move: number; inv: number; profit: number; fee: number }>();
+  const payouts = new Map<string, Event>(); // one history line per withdrawal, however many holdings it came from
 
   for (const row of rows) {
     const slug = row.holding_id ? slugOf.get(row.holding_id) : undefined;
@@ -61,7 +63,15 @@ export function buildAccount(rows: LedgerRow[], slugOf: Map<string, string>, las
       case "withdrawal":
         h.inv += amt;
         m.inv += amt;
-        events.push({ t: amt > 0 ? "in" : "out", ym, day: paid?.day ?? dayOf(row), id: slug, amt });
+        if (row.type === "withdrawal" && row.ref_id) {
+          const e = payouts.get(row.ref_id);
+          if (e) e.amt = cents(e.amt + amt);
+          else {
+            const ev: Event = { t: "out", ym, day: paid?.day ?? dayOf(row), id: "", amt };
+            payouts.set(row.ref_id, ev);
+            events.push(ev);
+          }
+        } else events.push({ t: amt > 0 ? "in" : "out", ym, day: paid?.day ?? dayOf(row), id: slug, amt });
         break;
       case "profit":
       case "loss":
