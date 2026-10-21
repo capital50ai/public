@@ -43,7 +43,8 @@ begin
     for t in select p.oid::regprocedure::text as sig from pg_proc p
               where p.pronamespace = 'public'::regnamespace
                 and p.proname in ('handle_new_user', 'make_referral_code', 'set_updated_at',
-                                  'audit_log_immutable', 'consume_rate_limit') loop
+                                  'audit_log_immutable', 'consume_rate_limit', 'close_month',
+                                  'ledger_append_only', 'ledger_check_open_month', 'purge_demo_data') loop
       execute 'drop function if exists ' || t.sig || ' cascade';
     end loop;
     raise notice 'Removed the old empty schema.';

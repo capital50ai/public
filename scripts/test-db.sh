@@ -11,4 +11,4 @@ trap '$P -d postgres -c "drop database $DB" >/dev/null' EXIT
 for run in 1 2; do
   $P -d "$DB" -f supabase/tests/auth_stub.sql $(ls supabase/migrations/*.sql | sort | sed 's/^/-f /')
 done
-$P -d "$DB" -f supabase/tests/phase1.sql | grep -E "PASSED"
+for t in supabase/tests/phase*.sql; do $P -d "$DB" -f "$t" | grep -E "PASSED"; done

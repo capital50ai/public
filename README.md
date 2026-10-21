@@ -15,6 +15,15 @@ The server fills in the strategy returns from the `strategy_returns` table.
 - Rate limits: 5 logins per 15 min per number/email (20 per IP), 3 SMS codes per hour per number.
 - Audit log of sign-ups, logins, reset codes and password changes (append-only).
 
+## Phase 2 (read-only dashboard)
+
+- `holdings`, append-only `ledger_entries` (balances are sums of it), `month_closes`.
+- `close_month(ym)`: profit = round(value × return%, 2), fee = round(max(0, profit) × 2.5%, 2);
+  idempotent (re-running is a no-op), months close in order, needs a *published* return.
+- Dashboard overview, strategies, wallet, transaction history and statements read the user's ledger.
+- Demo account holds the preview's sample deposits with real closes for Jul–Sep 2026
+  (Rs 162,209.38, identical to the preview). Remove before launch: `select public.purge_demo_data();`
+
 ## Backend switch
 
 Until `C50_BACKEND=live` is set, the site runs in **preview mode**: the original front-end behaviour, with
