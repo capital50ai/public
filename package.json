@@ -10,7 +10,8 @@
     "migrate": "node scripts/run-migrations.mjs",
     "gen-seed": "node scripts/gen-seed.mjs",
     "test:db": "bash scripts/test-db.sh",
-    "create-demo-user": "node scripts/create-demo-user.mjs"
+    "create-demo-user": "node scripts/create-demo-user.mjs",
+    "build-setup-sql": "node scripts/build-setup-sql.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",

@@ -68,7 +68,7 @@ create table if not exists public.profiles (
   email              text,
   city               text,
   referral_code      text not null unique check (referral_code ~ '^[A-Z0-9]{4,12}$'),
-  referred_by        uuid references public.profiles(id),
+  referred_by        uuid references public.profiles(id) on delete set null,
   referred_at        timestamptz,
   leaderboard_opt_in boolean not null default false,
   hide_balances      boolean not null default false,
@@ -77,6 +77,10 @@ create table if not exists public.profiles (
   updated_at         timestamptz not null default now()
 );
 create unique index if not exists profiles_email_lower_key on public.profiles (lower(email));
+-- Deleting an account must not be blocked by the members it referred.
+alter table public.profiles drop constraint if exists profiles_referred_by_fkey;
+alter table public.profiles add constraint profiles_referred_by_fkey
+  foreign key (referred_by) references public.profiles(id) on delete set null;
 
 -- ----------------------------------------------------------------- audit_log
 -- Immutable: no update or delete, for anyone.

@@ -29,6 +29,10 @@ do $$ declare n int; r record; begin
   select * into r from public.profiles where phone = '+923461234567';
   assert r.referred_by is null and r.referral_code ~ '^ZED[0-9]{2}$', 'junk ref ignored; short name code';
   select count(*) into n from public.audit_log where action = 'profile.create'; assert n = 4, 'audit rows ' || n;
+  -- deleting a referrer keeps the member and clears the link
+  delete from auth.users where id = '00000000-0000-0000-0000-00000000000a';
+  select referred_by into r from public.profiles where phone = '+923451234567';
+  assert r.referred_by is null, 'referred_by not cleared';
 end $$;
 
 -- audit_log is append-only, even for the table owner
@@ -39,12 +43,12 @@ do $$ begin
   exception when raise_exception then if sqlerrm = 'delete allowed' then raise; end if; end;
 end $$;
 
--- RLS as user A
+-- RLS as user B
 set local role authenticated;
-select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', true);
+select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', true);
 do $$ declare n int; begin
-  select count(*) into n from public.profiles; assert n = 1, 'A sees ' || n || ' profiles';
-  select count(*) into n from public.profiles where phone = '+923331112222'; assert n = 0, 'A sees B';
+  select count(*) into n from public.profiles; assert n = 1, 'B sees ' || n || ' profiles';
+  select count(*) into n from public.profiles where phone = '+923451234567'; assert n = 0, 'B sees C';
   select count(*) into n from public.strategy_returns; assert n = 138, 'A sees returns ' || n;
   begin select count(*) into n from public.audit_log; raise exception 'audit readable';
   exception when insufficient_privilege then null; end;

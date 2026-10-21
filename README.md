@@ -22,8 +22,9 @@ returns taken from the bundled records. This keeps the shared demo link working 
 
 ## Going live (one time)
 
-1. **Supabase → SQL Editor:** run the files in `supabase/migrations/` in order (0001, 0002, 0003).
-   Re-running them is safe.
+1. **Supabase → SQL Editor:** paste all of `supabase/setup.sql` and press Run. It creates the tables,
+   loads the returns and creates the demo account. Re-running it is safe.
+   (After changing a migration, regenerate it with `npm run build-setup-sql`.)
 2. **Supabase → Authentication → Sign In / Providers → Phone:** enable it and choose an SMS provider
    (Twilio works for Pakistan). Keep "Confirm phone" on.
 3. **Vercel → Project → Settings → Environment Variables** (Production):
@@ -33,8 +34,8 @@ returns taken from the bundled records. This keeps the shared demo link working 
    - `C50_BACKEND` = `live`
 
    Then redeploy.
-4. Create the demo account: `node --env-file=.env.local scripts/create-demo-user.mjs`
-   (mobile 300 1234567, password `Demo#2026`).
+4. Demo account (created by `setup.sql`): mobile 300 1234567, password `Demo#2026`.
+   `scripts/create-demo-user.mjs` can reset it from a machine that can reach Supabase.
 
 ## Development
 
