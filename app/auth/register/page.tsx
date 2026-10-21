@@ -1,5 +1,7 @@
 "use client";
 
+export const dynamic = 'force-static';
+
 import { useOtp } from "@/lib/auth/use-otp";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";

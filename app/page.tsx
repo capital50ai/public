@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+export const dynamic = 'force-static';
+
 export default function HomePage() {
   // Hardcoded strategies for now to test routing
   const strategies = [
