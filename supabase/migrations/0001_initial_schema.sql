@@ -4,18 +4,49 @@
 
 create extension if not exists pgcrypto;
 
--- An earlier placeholder schema (profiles.phone_number + otp_sessions) never held real
--- users. Remove it so the brief's schema can be created. Only fires on that exact shape.
+-- Earlier attempts left a different, empty schema in some projects. If profiles exists without
+-- referral_code, that old schema is removed: but only when every table other than the strategy
+-- tables is empty. If anything holds data, nothing is touched and the script stops with the
+-- table name.
 do $$
+declare
+  t record;
+  n bigint;
 begin
-  if exists (select 1 from information_schema.columns
-             where table_schema = 'public' and table_name = 'profiles' and column_name = 'phone_number')
-     and exists (select 1 from information_schema.tables
-                 where table_schema = 'public' and table_name = 'otp_sessions') then
-    drop table if exists public.notifications, public.audit_log, public.otp_sessions,
-      public.deposits, public.withdrawals, public.payout_methods, public.affiliate_commissions,
-      public.affiliate_codes, public.kyc_documents, public.kyc_applications, public.ledger_entries,
-      public.holdings, public.strategy_returns, public.strategies, public.profiles cascade;
+  if exists (select 1 from information_schema.tables where table_schema = 'public' and table_name = 'profiles')
+     and not exists (select 1 from information_schema.columns
+                     where table_schema = 'public' and table_name = 'profiles' and column_name = 'referral_code') then
+    for t in select table_name from information_schema.tables
+              where table_schema = 'public' and table_type = 'BASE TABLE'
+                and table_name not in ('strategies', 'strategy_returns') loop
+      execute format('select count(*) from public.%I', t.table_name) into n;
+      if n > 0 then
+        raise exception 'Old table public.% has % row(s). Nothing was changed. Send this message to your developer.', t.table_name, n;
+      end if;
+    end loop;
+
+    -- old triggers on auth.users that call public functions would break sign-up
+    for t in select tg.tgname from pg_trigger tg join pg_proc p on p.oid = tg.tgfoid
+              where tg.tgrelid = 'auth.users'::regclass and not tg.tgisinternal
+                and p.pronamespace = 'public'::regnamespace loop
+      execute format('drop trigger %I on auth.users', t.tgname);
+    end loop;
+
+    for t in select table_name from information_schema.tables
+              where table_schema = 'public' and table_type = 'BASE TABLE' loop
+      execute format('drop table if exists public.%I cascade', t.table_name);
+    end loop;
+    for t in select typname from pg_type
+              where typnamespace = 'public'::regnamespace and typtype = 'e' loop
+      execute format('drop type if exists public.%I cascade', t.typname);
+    end loop;
+    for t in select p.oid::regprocedure::text as sig from pg_proc p
+              where p.pronamespace = 'public'::regnamespace
+                and p.proname in ('handle_new_user', 'make_referral_code', 'set_updated_at',
+                                  'audit_log_immutable', 'consume_rate_limit') loop
+      execute 'drop function if exists ' || t.sig || ' cascade';
+    end loop;
+    raise notice 'Removed the old empty schema.';
   end if;
 end $$;
 
