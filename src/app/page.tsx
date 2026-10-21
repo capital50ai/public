@@ -1,22 +1,15 @@
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
-
-export default async function HomePage() {
-  let strategies = null;
-
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase
-      .from("strategies")
-      .select("*")
-      .limit(6);
-    strategies = data;
-  } catch (error) {
-    console.error("Failed to fetch strategies:", error);
-    strategies = null;
-  }
+export default function HomePage() {
+  // Hardcoded strategies for now to test routing
+  const strategies = [
+    { id: "1", name: "Growth Momentum", description: "Aggressive growth strategy", color: "#3b82f6", risk_level: "high" },
+    { id: "2", name: "Value Discovery", description: "Value investing approach", color: "#10b981", risk_level: "medium" },
+    { id: "3", name: "Dividend Income", description: "Income-focused strategy", color: "#fbbf24", risk_level: "low" },
+    { id: "4", name: "Tech Innovation", description: "Tech-heavy portfolio", color: "#a78bfa", risk_level: "high" },
+    { id: "5", name: "Market Neutral", description: "Market-independent returns", color: "#ef4444", risk_level: "low" },
+    { id: "6", name: "Emerging Markets", description: "High-growth emerging markets", color: "#06b6d4", risk_level: "high" },
+  ];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
