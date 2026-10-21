@@ -32,40 +32,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
     let me = null;
     let account = null;
     if (isLive()) {
+      // Everything in one parallel round trip. RLS limits each read to the signed-in investor.
       const supabase = await createClient();
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return Response.redirect(new URL("/auth.html", req.url), 303);
-      const { data: p, error } = await supabase
-        .from("profiles")
-        .select("full_name, phone, email, city, referral_code, created_at")
-        .eq("user_id", user.id)
-        .single();
-      if (error || !p) {
-        console.error("dashboard: no profile for user", user.id, error?.message);
-        return new Response("Your account is still being set up. Please try again in a minute.", { status: 503 });
-      }
-      me = {
-        name: p.full_name || "Investor",
-        phone: p.phone ? `0${p.phone.slice(3)}` : "",
-        email: p.email ?? "",
-        city: p.city ?? "",
-        since: String(p.created_at).slice(0, 7),
-        code: p.referral_code,
-        kyc: await kycState(user.id),
-        pay: {
-          mode: paymentsMode(),
-          methods: {
-            jazzcash: !!jazzcashConfig(),
-            easypaisa: false,
-            bank: paymentsMode() === "sandbox" || !!(await bankAccount()),
-            usdt: !!nowpaymentsConfig(),
-          },
-        },
-      };
-
-      const [holdings, entries, closes, pending] = await Promise.all([
+      const [{ data: { user } }, profile, kyc, bank, holdings, entries, closes, pending] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.from("profiles").select("full_name, phone, email, city, referral_code, created_at").maybeSingle(),
+        kycState(supabase).catch((e: Error) => e),
+        bankAccount(),
         supabase.from("holdings").select("id, strategies(slug)").returns<{ id: string; strategies: { slug: string } }[]>(),
         supabase
           .from("ledger_entries")
@@ -79,6 +52,35 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
           .order("created_at", { ascending: false }).limit(20)
           .returns<{ amount: number; created_at: string; strategies: { slug: string } }[]>(),
       ]);
+      if (!user) return Response.redirect(new URL("/auth.html", req.url), 303);
+      const p = profile.data;
+      if (profile.error || !p) {
+        console.error("dashboard: no profile for user", user.id, profile.error?.message);
+        return new Response("Your account is still being set up. Please try again in a minute.", { status: 503 });
+      }
+      if (kyc instanceof Error) {
+        console.error("dashboard: kyc load failed", kyc.message);
+        return new Response("We couldn't load your account. Please refresh in a moment.", { status: 503 });
+      }
+      me = {
+        name: p.full_name || "Investor",
+        phone: p.phone ? `0${p.phone.slice(3)}` : "",
+        email: p.email ?? "",
+        city: p.city ?? "",
+        since: String(p.created_at).slice(0, 7),
+        code: p.referral_code,
+        kyc,
+        pay: {
+          mode: paymentsMode(),
+          methods: {
+            jazzcash: !!jazzcashConfig(),
+            easypaisa: false,
+            bank: paymentsMode() === "sandbox" || !!bank,
+            usdt: !!nowpaymentsConfig(),
+          },
+        },
+      };
+
       const failed = holdings.error || entries.error || closes.error || pending.error;
       if (failed) {
         console.error("dashboard: account load failed", failed.message);

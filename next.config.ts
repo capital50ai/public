@@ -1,10 +1,15 @@
 import type { NextConfig } from "next";
 
-// The UI is the owner-approved design in templates/*.html, served by app/p/[page]
+// The UI is the owner-approved design in templates/*.html (split into templates/dist + public/assets
+// at build time), served by app/p/[page]
 // with returns filled in from the database.
 const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
-    "/p/[page]": ["./templates/**/*"],
+    "/p/[page]": ["./templates/dist/**/*"],
+  },
+  // Styles, scripts and images are content-hashed by scripts/build-assets.mjs, so they never change in place.
+  async headers() {
+    return [{ source: "/assets/:path*", headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }] }];
   },
   async rewrites() {
     return {

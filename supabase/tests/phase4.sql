@@ -37,6 +37,15 @@ do $$ declare r jsonb; n int; v numeric; begin
   assert n = 1 and v = 15000, 'ledger after replay: ' || n || ' rows, ' || v;
   select count(*) into n from public.holdings where user_id = '00000000-0000-0000-0000-0000000000d1'; assert n = 1, 'holding';
 
+  -- one provider transaction can't pay for two deposits
+  insert into public.deposits (id, user_id, strategy_id, amount, method, reference) select
+    '00000000-0000-0000-0000-00000000de05', '00000000-0000-0000-0000-0000000000d1', id, 15000, 'jazzcash', 'C50TEST0005'
+    from public.strategies where slug = 'gold';
+  begin perform public.credit_deposit('00000000-0000-0000-0000-00000000de05', null, 'jazzcash_ipn', 'JC-TXN-1');
+        raise exception 'provider payment reused';
+  exception when raise_exception then if sqlerrm = 'provider payment reused' then raise; end if;
+    assert sqlerrm like 'Payment JC-TXN-1 was already used for deposit C50TEST0001%', sqlerrm; end;
+
   -- failed deposit can't be credited later; paid can't be failed
   perform public.close_deposit('00000000-0000-0000-0000-00000000de03', 'failed', null, 'provider said failed');
   begin perform public.credit_deposit('00000000-0000-0000-0000-00000000de03', null, 'x', null); raise exception 'credited a failed deposit';
@@ -61,6 +70,14 @@ do $$ declare r jsonb; n int; v numeric; begin
   assert r->>'status' = 'paid', 'second confirm ' || r;
   select count(*) into n from public.ledger_entries where ref_id = '00000000-0000-0000-0000-00000000de02'; assert n = 1, 'bank ledger';
   select count(*) into n from public.audit_log where action like 'deposit.%'; assert n = 5, 'deposit audit rows ' || n;
+  -- the same bank transaction can't pay for a second deposit
+  insert into public.deposits (id, user_id, strategy_id, amount, method, reference) select
+    '00000000-0000-0000-0000-00000000de04', '00000000-0000-0000-0000-0000000000d2', id, 20000, 'bank', 'C50-BANK02'
+    from public.strategies where slug = 'gold';
+  begin perform public.confirm_bank_deposit('00000000-0000-0000-0000-00000000de04', '00000000-0000-0000-0000-0000000000f1', 'FT12345');
+        raise exception 'bank reference reused';
+  exception when raise_exception then if sqlerrm = 'bank reference reused' then raise; end if;
+    assert sqlerrm like 'Bank reference FT12345 was already used for deposit C50-BANK01%', sqlerrm; end;
 
   -- payment_events are append-only
   insert into public.payment_events (provider, signature_ok, outcome, payload) values ('test', true, 'x', '{}');
@@ -71,7 +88,7 @@ end $$;
 set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000d2', true);
 do $$ declare n int; begin
-  select count(*) into n from public.deposits; assert n = 1, 'sees ' || n || ' deposits';
+  select count(*) into n from public.deposits; assert n = 2, 'sees ' || n || ' deposits';
   begin update public.deposits set status = 'paid'; raise exception 'self-credit';
   exception when insufficient_privilege then null; end;
   begin perform public.credit_deposit('00000000-0000-0000-0000-00000000de03', null, 'x', null); raise exception 'credit callable';

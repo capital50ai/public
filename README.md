@@ -77,6 +77,13 @@ returns taken from the bundled records. This keeps the shared demo link working 
 4. Demo account (created by `setup.sql`): mobile 300 1234567, password `Demo#2026`.
    `scripts/create-demo-user.mjs` can reset it from a machine that can reach Supabase.
 
+## Page delivery (mobile speed)
+
+`scripts/build-assets.mjs` runs before every build: it splits each template into a small HTML shell
+(`templates/dist/`, filled per request) and content-hashed files in `public/assets/` cached for a year.
+Per-visit downloads: dashboard 573 KB -> ~38 KB, home 1.1 MB -> ~20 KB, login 79 KB -> ~14 KB.
+The dashboard's server reads (login, profile, KYC, balances) run in one parallel round trip.
+
 ## Development
 
 ```bash

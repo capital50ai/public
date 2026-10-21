@@ -1,5 +1,6 @@
 import "server-only";
 import { createHash } from "node:crypto";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export type KycApp = {
@@ -43,14 +44,21 @@ export async function documentKinds(applicationId: string): Promise<Set<string>>
   return new Set(data.map((d) => d.kind as string));
 }
 
-export async function kycState(userId: string): Promise<KycState> {
-  const app = await latestApplication(userId);
+// The investor's current KYC state, read through their own session (RLS), in one request.
+export async function kycState(supabase: SupabaseClient): Promise<KycState> {
+  const { data: app, error } = await supabase
+    .from("kyc_applications")
+    .select("id, status, personal, financial, rejection_reason, submitted_at, kyc_documents(kind)")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<KycApp & { kyc_documents: { kind: string }[] }>();
+  if (error) throw new Error(`kyc_applications: ${error.message}`);
   if (!app) return { status: "none", step: 0, data: {}, files: {} };
   const data = { ...app.personal, ...app.financial };
   if (app.status === "rejected")
     return { status: "rejected", step: 0, data, files: {}, reason: app.rejection_reason ?? "" };
 
-  const kinds = await documentKinds(app.id);
+  const kinds = new Set(app.kyc_documents.map((d) => d.kind));
   const files: Record<string, string> = {};
   for (const k of kinds) files[FILE_KEY[k as keyof typeof FILE_KEY]] = "uploaded";
   const submitted = app.submitted_at ? Date.parse(app.submitted_at) : undefined;

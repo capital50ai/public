@@ -85,6 +85,11 @@ begin
   if d.status <> 'pending' then
     raise exception 'Deposit % is %, not pending', d.reference, d.status;
   end if;
+  -- one provider transaction can only ever pay for one deposit
+  if p_provider_ref is not null and exists (select 1 from deposits where provider_ref = p_provider_ref and id <> d.id) then
+    raise exception 'Payment % was already used for deposit %', p_provider_ref,
+      (select reference from deposits where provider_ref = p_provider_ref and id <> d.id limit 1);
+  end if;
 
   v_ym := deposit_effective_ym(v_now);
   insert into holdings (user_id, strategy_id) values (d.user_id, d.strategy_id)
@@ -147,6 +152,11 @@ begin
   if d.method <> 'bank' then raise exception 'Not a bank transfer'; end if;
   if d.status <> 'pending' then raise exception 'Deposit is %, not pending', d.status; end if;
   if d.user_id = p_staff then raise exception 'Staff cannot confirm their own deposit'; end if;
+  -- one bank transaction can only ever pay for one deposit
+  if exists (select 1 from deposits where provider_ref = 'BANK:' || v_ref and id <> d.id) then
+    raise exception 'Bank reference % was already used for deposit %', v_ref,
+      (select reference from deposits where provider_ref = 'BANK:' || v_ref and id <> d.id limit 1);
+  end if;
 
   v_first := d.approvals -> 0;
   if v_first is null then

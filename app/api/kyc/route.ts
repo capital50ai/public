@@ -8,9 +8,10 @@ import { cnicHash, documentKinds, kycState, latestApplication } from "@/lib/kyc-
 
 export async function GET() {
   if (!isLive()) return Response.json({ preview: true });
-  const { data: { user } } = await (await createClient()).auth.getUser();
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) return fail("Please log in again.", 401);
-  return Response.json(await kycState(user.id));
+  return Response.json(await kycState(supabase));
 }
 
 // Saves one step of the KYC form: { step: "personal" | "financial" | "submit", data, declaration }.

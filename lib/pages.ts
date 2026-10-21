@@ -10,7 +10,7 @@ const cache = new Map<PageName, string>();
 async function template(name: PageName): Promise<string> {
   let t = cache.get(name);
   if (!t) {
-    t = await readFile(path.join(process.cwd(), "templates", `${name}.html`), "utf8");
+    t = await readFile(path.join(process.cwd(), "templates", "dist", `${name}.html`), "utf8");
     cache.set(name, t);
   }
   return t;

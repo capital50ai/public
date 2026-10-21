@@ -12,7 +12,9 @@
     "test:db": "bash scripts/test-db.sh",
     "create-demo-user": "node scripts/create-demo-user.mjs",
     "build-setup-sql": "node scripts/build-setup-sql.mjs",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prebuild": "node scripts/build-assets.mjs",
+    "predev": "node scripts/build-assets.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
