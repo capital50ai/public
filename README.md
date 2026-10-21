@@ -1,36 +1,45 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Capital 50 AI
 
-## Getting Started
+Investor platform for Capital 50 AI. The UI is the owner-approved design in `templates/`
+(public site, login/sign-up, dashboard), served unchanged by `app/p/[page]/route.ts`.
+The server fills in the strategy returns from the `strategy_returns` table.
 
-First, run the development server:
+## Status: Phase 1 (Foundation)
+
+- Supabase schema: `profiles`, `strategies`, `strategy_returns`, `audit_log`, `rate_limits`, with RLS.
+- Six strategies and every published monthly return, seeded from `data/records.json`.
+- Real auth: phone or email + password login, sign-up with SMS code, forgot password → code → new password, logout.
+- Dashboard requires a login and shows the user's own name, mobile, email, invite code and member-since date.
+  Balances and members are still sample data until Phase 2.
+- Referral codes generated per user; `?ref=CODE` is stored at sign-up (self-referral blocked).
+- Rate limits: 5 logins per 15 min per number/email (20 per IP), 3 SMS codes per hour per number.
+- Audit log of sign-ups, logins, reset codes and password changes (append-only).
+
+## Backend switch
+
+Until `C50_BACKEND=live` is set, the site runs in **preview mode**: the original front-end behaviour, with
+returns taken from the bundled records. This keeps the shared demo link working while Supabase is being connected.
+
+## Going live (one time)
+
+1. **Supabase → SQL Editor:** run the files in `supabase/migrations/` in order (0001, 0002, 0003).
+   Re-running them is safe.
+2. **Supabase → Authentication → Sign In / Providers → Phone:** enable it and choose an SMS provider
+   (Twilio works for Pakistan). Keep "Confirm phone" on.
+3. **Vercel → Project → Settings → Environment Variables** (Production):
+   - `NEXT_PUBLIC_SUPABASE_URL`: Project URL
+   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`: publishable key
+   - `SUPABASE_SERVICE_ROLE_KEY`: secret key (server only)
+   - `C50_BACKEND` = `live`
+
+   Then redeploy.
+4. Create the demo account: `node --env-file=.env.local scripts/create-demo-user.mjs`
+   (mobile 300 1234567, password `Demo#2026`).
+
+## Development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run dev              # local server
+npm run gen-seed         # regenerate 0002 from data/records.json
+npm run test:db          # migrations twice + RLS/trigger/rate-limit tests on a local Postgres
 ```
-
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
-
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
-
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.

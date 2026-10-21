@@ -7,14 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "node scripts/seed.mjs",
-    "migrate": "node scripts/run-migrations.mjs"
+    "migrate": "node scripts/run-migrations.mjs",
+    "gen-seed": "node scripts/gen-seed.mjs",
+    "test:db": "bash scripts/test-db.sh",
+    "create-demo-user": "node scripts/create-demo-user.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.118.0",
     "next": "16.4.2",
-    "next-auth": "^4.24.15",
     "postgres": "^3.4.9",
     "react": "19.3.0",
     "react-dom": "19.3.0"

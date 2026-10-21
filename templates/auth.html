@@ -204,6 +204,15 @@ form{display:grid;gap:14px;margin-top:20px}
         </form>
       </div>
 
+      <!-- NEW PASSWORD (after a reset code) -->
+      <div class="pane" id="pNewPass" hidden>
+        <h2>New <span class="it">password.</span></h2><p class="lead">Choose a strong password for your account.</p>
+        <form id="fNewPass" novalidate>
+          <div class="f"><label for="nPass">New password</label><div class="in"><input id="nPass" type="password" autocomplete="new-password" placeholder="8+ characters"><button type="button" class="eye" aria-label="Show password" data-eye="nPass"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" /> <circle cx="12" cy="12" r="3" /></svg></button></div><span class="err"></span></div>
+          <button class="go" type="submit">Save password<svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /> <path d="m12 5 7 7-7 7" /></svg></button>
+        </form>
+      </div>
+
       <!-- DONE -->
       <div class="pane" id="pDone" hidden>
         <div class="done"><div class="badge"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg></div><h2 id="doneT">You're in.</h2><p class="lead" id="doneP">Taking you to your dashboard…</p></div>
@@ -215,14 +224,14 @@ form{display:grid;gap:14px;margin-top:20px}
   </section>
 </div>
 <script>
-const REAL={"records": {"gold": [{"ym": "2024-12", "r": 13.0}, {"ym": "2025-01", "r": 19.5}, {"ym": "2025-02", "r": 22.0}, {"ym": "2025-03", "r": 70.0}, {"ym": "2025-04", "r": 50.0}, {"ym": "2025-05", "r": 33.0}, {"ym": "2025-06", "r": -10.0}, {"ym": "2025-07", "r": 19.0}, {"ym": "2025-08", "r": 29.0}, {"ym": "2025-09", "r": 30.0}, {"ym": "2025-10", "r": 24.0}, {"ym": "2025-11", "r": 33.0}, {"ym": "2025-12", "r": 19.0}, {"ym": "2026-01", "r": 22.0}, {"ym": "2026-02", "r": 39.0}, {"ym": "2026-03", "r": 32.0}, {"ym": "2026-04", "r": 34.0}, {"ym": "2026-05", "r": 38.0}, {"ym": "2026-06", "r": 39.0}, {"ym": "2026-07", "r": 57.0}, {"ym": "2026-08", "r": 43.0}, {"ym": "2026-09", "r": 40.0}], "crypto": [{"ym": "2024-12", "r": 29.0}, {"ym": "2025-01", "r": 22.4}, {"ym": "2025-02", "r": 29.0}, {"ym": "2025-03", "r": 83.0}, {"ym": "2025-04", "r": 32.0}, {"ym": "2025-05", "r": 41.0}, {"ym": "2025-06", "r": -14.0}, {"ym": "2025-07", "r": 20.0}, {"ym": "2025-08", "r": 32.0}, {"ym": "2025-09", "r": 12.0}, {"ym": "2025-10", "r": 32.0}, {"ym": "2025-11", "r": 41.0}, {"ym": "2025-12", "r": 10.0}, {"ym": "2026-01", "r": 31.0}, {"ym": "2026-02", "r": 57.0}, {"ym": "2026-03", "r": 23.0}, {"ym": "2026-04", "r": 42.0}, {"ym": "2026-05", "r": 21.0}, {"ym": "2026-06", "r": 55.0}, {"ym": "2026-07", "r": 48.0}, {"ym": "2026-08", "r": 29.0}, {"ym": "2026-09", "r": 39.0}], "ecom": [{"ym": "2024-12", "r": 15.0}, {"ym": "2025-01", "r": 19.0}, {"ym": "2025-02", "r": 34.0}, {"ym": "2025-03", "r": 30.0}, {"ym": "2025-04", "r": 41.0}, {"ym": "2025-05", "r": 6.0}, {"ym": "2025-06", "r": 9.0}, {"ym": "2025-07", "r": 31.0}, {"ym": "2025-08", "r": 26.0}, {"ym": "2025-09", "r": 17.0}, {"ym": "2025-10", "r": 16.0}, {"ym": "2025-11", "r": 16.0}, {"ym": "2025-12", "r": 22.0}, {"ym": "2026-01", "r": 51.0}, {"ym": "2026-02", "r": 21.0}, {"ym": "2026-03", "r": 12.0}, {"ym": "2026-04", "r": 19.0}, {"ym": "2026-05", "r": 40.0}, {"ym": "2026-06", "r": 28.0}, {"ym": "2026-07", "r": 28.0}, {"ym": "2026-08", "r": -11.0}, {"ym": "2026-09", "r": 28.0}], "sat": [{"ym": "2024-12", "r": 22.0}, {"ym": "2025-01", "r": 17.0}, {"ym": "2025-02", "r": 40.0}, {"ym": "2025-03", "r": 32.0}, {"ym": "2025-04", "r": 8.0}, {"ym": "2025-05", "r": 29.0}, {"ym": "2025-06", "r": 12.0}, {"ym": "2025-07", "r": 27.0}, {"ym": "2025-08", "r": 49.0}, {"ym": "2025-09", "r": 90.0}, {"ym": "2025-10", "r": 41.0}, {"ym": "2025-11", "r": 38.0}, {"ym": "2025-12", "r": 24.0}, {"ym": "2026-01", "r": 19.0}, {"ym": "2026-02", "r": 39.0}, {"ym": "2026-03", "r": 18.0}, {"ym": "2026-04", "r": 30.0}, {"ym": "2026-05", "r": 16.0}, {"ym": "2026-06", "r": 31.0}, {"ym": "2026-07", "r": 30.0}, {"ym": "2026-08", "r": 34.0}, {"ym": "2026-09", "r": 44.0}], "prompt": [{"ym": "2024-12", "r": 30.0}, {"ym": "2025-01", "r": 27.0}, {"ym": "2025-02", "r": 43.0}, {"ym": "2025-03", "r": 19.0}, {"ym": "2025-04", "r": 19.0}, {"ym": "2025-05", "r": -4.0}, {"ym": "2025-06", "r": 34.0}, {"ym": "2025-07", "r": 12.0}, {"ym": "2025-08", "r": 12.0}, {"ym": "2025-09", "r": 27.0}, {"ym": "2025-10", "r": 29.0}, {"ym": "2025-11", "r": 21.0}, {"ym": "2025-12", "r": 10.0}, {"ym": "2026-01", "r": 27.0}, {"ym": "2026-02", "r": 12.0}, {"ym": "2026-03", "r": 30.0}, {"ym": "2026-04", "r": 17.0}, {"ym": "2026-05", "r": 21.0}, {"ym": "2026-06", "r": 21.0}, {"ym": "2026-07", "r": 11.0}, {"ym": "2026-08", "r": 70.0}, {"ym": "2026-09", "r": 50.0}], "kitchen": [{"ym": "2024-12", "r": 21.8}, {"ym": "2025-01", "r": 20.98}, {"ym": "2025-02", "r": 33.6}, {"ym": "2025-03", "r": 46.8}, {"ym": "2025-04", "r": 30.0}, {"ym": "2025-05", "r": 28.0}, {"ym": "2025-06", "r": 6.2}, {"ym": "2025-07", "r": 21.8}, {"ym": "2025-08", "r": 29.6}, {"ym": "2025-09", "r": 35.2}, {"ym": "2025-10", "r": 28.4}, {"ym": "2025-11", "r": 29.8}, {"ym": "2025-12", "r": 17.0}, {"ym": "2026-01", "r": 30.0}, {"ym": "2026-02", "r": 33.6}, {"ym": "2026-03", "r": 23.0}, {"ym": "2026-04", "r": 28.4}, {"ym": "2026-05", "r": 27.2}, {"ym": "2026-06", "r": 34.8}, {"ym": "2026-07", "r": 34.8}, {"ym": "2026-08", "r": 33.0}, {"ym": "2026-09", "r": 40.2}]}, "mtd": {"ym": "2026-10", "gold": 18.0, "crypto": 11.0, "ecom": 10.0, "sat": 18.0, "prompt": 5.0, "kitchen": 12.4}};
+const REAL=__C50_REAL__;
 const $=id=>document.getElementById(id);
 /* real last-month figure for the floating chip */
 (()=>{const k=REAL.records.kitchen,l=k[k.length-1];$("chipK").textContent=(l.r>0?"+":"")+l.r.toFixed(1)+"% "+new Date(l.ym+"-01").toLocaleString("en",{month:"short"})})();
 /* otp boxes (template literal above isn't processed in HTML, so build here) */
 $("otp").innerHTML=Array.from({length:6},(_,i)=>`<input inputmode="numeric" autocomplete="${i?"off":"one-time-code"}" maxlength="1" aria-label="Digit ${i+1}">`).join("");
 
-const panes=["pLogin","pForgot","pSignup","pOtp","pDone"];
+const panes=["pLogin","pForgot","pSignup","pOtp","pNewPass","pDone"];
 function show(id){panes.forEach(p=>$(p).hidden=p!==id);const m=id==="pSignup"||id==="pOtp"?"signup":"login";
   $("tabs").dataset.m=m;document.querySelectorAll("[data-tab]").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===m));
   const f=$(id).querySelector("input:not([type=checkbox])");if(f&&matchMedia("(pointer:fine)").matches)f.focus()}
@@ -255,15 +264,25 @@ $("sPass").addEventListener("input",e=>{const{r,s}=strength(e.target.value);$("m
 function busy(btn,on,label){if(on){btn.dataset.l=btn.innerHTML;btn.innerHTML=`<span class="spin"></span>${label||""}`;btn.disabled=true}else{btn.innerHTML=btn.dataset.l;btn.disabled=false}}
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const save=(k,v)=>{try{sessionStorage.setItem(k,v)}catch(e){}};
+/* server calls; {preview:true} means the backend isn't switched on yet, so keep the preview flow */
+const api=async(path,body)=>{try{const r=await fetch(path,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body||{})});const j=await r.json().catch(()=>({}));return r.ok?{ok:true,...j}:{ok:false,error:j.error||"Something went wrong. Please try again.",field:j.field}}catch(e){return{ok:false,error:"No connection. Check your internet and try again."}}};
+const digits=v=>v.replace(/\D/g,"");
+let otpPhone="";
 
 $("fLogin").addEventListener("submit",async e=>{e.preventDefault();let ok=true;
   if(by==="phone")ok=setErr($("lPhone"),phoneOk($("lPhone").value)?"":"Enter a Pakistani mobile number, like 300 1234567.")&&ok;
   else ok=setErr($("lEmail"),emailOk($("lEmail").value)?"":"Enter a valid email address.")&&ok;
   ok=setErr($("lPass"),$("lPass").value.length>=6?"":"Enter your password.")&&ok;if(!ok)return;
-  const b=e.submitter||e.target.querySelector(".go");busy(b,true,"Checking…");await wait(700);busy(b,false);
+  const b=e.submitter||e.target.querySelector(".go");busy(b,true,"Checking…");
+  const res=await api("/api/auth/login",{by,phone:digits($("lPhone").value),email:$("lEmail").value.trim(),password:$("lPass").value});
+  if(res.preview)await wait(700);busy(b,false);
+  if(!res.ok){setErr(res.field==="email"?$("lEmail"):res.field==="phone"?$("lPhone"):$("lPass"),res.error);return}
   $("doneT").textContent="Welcome back.";show("pDone");await wait(900);location.href="dashboard.html"});
 
 $("fForgot").addEventListener("submit",async e=>{e.preventDefault();if(!setErr($("fPhone"),phoneOk($("fPhone").value)?"":"Enter a Pakistani mobile number."))return;
+  const b=e.submitter||e.target.querySelector(".go");busy(b,true,"Sending…");otpPhone=digits($("fPhone").value);
+  const res=await api("/api/auth/forgot",{phone:otpPhone});busy(b,false);
+  if(!res.ok){setErr($("fPhone"),res.error);return}
   $("otpTo").textContent="+92 "+$("fPhone").value;flow="reset";show("pOtp");startResend()});
 
 let flow="signup";
@@ -273,6 +292,9 @@ $("fSignup").addEventListener("submit",async e=>{e.preventDefault();let ok=true;
   ok=setErr($("sEmail"),emailOk($("sEmail").value)?"":"Enter a valid email address.")&&ok;
   ok=setErr($("sPass"),strength($("sPass").value).s>=3?"":"Use 8+ characters with a mix of uppercase, numbers or symbols.")&&ok;
   $("termsErr").textContent=$("sTerms").checked?"":"Please confirm you understand the risks.";ok=ok&&$("sTerms").checked;if(!ok)return;
+  const b=e.submitter||e.target.querySelector(".go");busy(b,true,"Sending code…");otpPhone=digits($("sPhone").value);
+  const res=await api("/api/auth/signup",{name:n,phone:otpPhone,email:$("sEmail").value.trim(),password:$("sPass").value,ref:$("sRef").value,terms:$("sTerms").checked});busy(b,false);
+  if(!res.ok){setErr({name:$("sName"),email:$("sEmail"),password:$("sPass")}[res.field]||$("sPhone"),res.error);return}
   save("c50name",n.split(/\s+/)[0]);flow="signup";$("otpTo").textContent="+92 "+$("sPhone").value;show("pOtp");startResend()});
 
 /* OTP boxes: auto-advance, backspace, paste */
@@ -283,8 +305,15 @@ boxes.forEach((b,i)=>{b.addEventListener("input",()=>{b.value=b.value.replace(/\
   b.addEventListener("keydown",e=>{if(e.key==="Backspace"&&!b.value&&boxes[i-1]){boxes[i-1].focus();boxes[i-1].value="";sync()}});
   b.addEventListener("paste",e=>{const d=(e.clipboardData.getData("text")||"").replace(/\D/g,"").slice(0,6);if(!d)return;e.preventDefault();d.split("").forEach((c,k)=>{if(boxes[k])boxes[k].value=c});boxes[Math.min(d.length,5)].focus();sync()})});
 let rt;function startResend(){let s=30;const r=$("resend");r.disabled=true;clearInterval(rt);rt=setInterval(()=>{s--;r.textContent=s>0?`Resend in ${s}s`:"Resend code";if(s<=0){clearInterval(rt);r.disabled=false}},1000);boxes.forEach(b=>b.value="");sync();if(matchMedia("(pointer:fine)").matches)boxes[0].focus()}
-$("resend").onclick=startResend;
-$("fOtp").addEventListener("submit",async e=>{e.preventDefault();if(code().length!==6)return;const b=$("otpGo");busy(b,true,"Verifying…");await wait(800);busy(b,false);
+$("resend").onclick=async()=>{const r=$("resend");r.disabled=true;const res=await api("/api/auth/resend",{phone:otpPhone,flow});if(!res.ok){r.disabled=false;$("otpErr").textContent=res.error;return}startResend()};
+$("fNewPass").addEventListener("submit",async e=>{e.preventDefault();if(!setErr($("nPass"),strength($("nPass").value).s>=3?"":"Use 8+ characters with a mix of uppercase, numbers or symbols."))return;
+  const b=e.submitter||e.target.querySelector(".go");busy(b,true,"Saving…");const res=await api("/api/auth/password",{password:$("nPass").value});busy(b,false);
+  if(!res.ok){setErr($("nPass"),res.error);return}
+  $("doneT").textContent="Password updated.";$("doneP").textContent="Taking you to your dashboard…";show("pDone");await wait(900);location.href="dashboard.html"});
+$("fOtp").addEventListener("submit",async e=>{e.preventDefault();if(code().length!==6)return;const b=$("otpGo");busy(b,true,"Verifying…");
+  const res=await api("/api/auth/verify",{phone:otpPhone,code:code(),flow});if(res.preview)await wait(800);busy(b,false);
+  if(!res.ok){$("otpErr").textContent=res.error;return}
+  if(flow==="reset"&&!res.preview){show("pNewPass");return}
   if(flow==="reset"){$("doneT").textContent="Code accepted.";$("doneP").textContent="In the live app you'd set a new password here. Opening the dashboard preview…"}
   else{$("doneT").textContent="Account created.";$("doneP").textContent="Opening your dashboard preview…"}
   show("pDone");await wait(1100);location.href="dashboard.html"});
