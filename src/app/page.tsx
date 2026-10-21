@@ -4,13 +4,19 @@ import { createClient } from "@/lib/supabase/server";
 export const revalidate = 60;
 
 export default async function HomePage() {
-  const supabase = await createClient();
+  let strategies = null;
 
-  // Fetch strategies
-  const { data: strategies } = await supabase
-    .from("strategies")
-    .select("*")
-    .limit(6);
+  try {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("strategies")
+      .select("*")
+      .limit(6);
+    strategies = data;
+  } catch (error) {
+    console.error("Failed to fetch strategies:", error);
+    strategies = null;
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
