@@ -38,6 +38,23 @@ The server fills in the strategy returns from the `strategy_returns` table.
 - Manual review until a KYC provider (NADRA check, liveness) is connected; `provider_ref`/`provider_result`
   are ready for its webhook.
 
+## Phase 4 (money in, test mode)
+
+- `deposits`, append-only `payment_events`, `app_settings` (company bank account).
+- `credit_deposit()` is the only way money is added: once per deposit, ledger entry dated the month
+  after payment (brief §5.1 rule 6, `deposit_effective_ym`), audit-logged. Replays are no-ops.
+- Bank transfer: investor gets a `C50-XXXXXX` reference; two different owner/finance staff confirm the
+  same bank-statement reference at `/admin/deposits`; the second confirmation credits it.
+- JazzCash (hosted checkout): credited only from the signed IPN at `/api/webhooks/jazzcash`; the browser
+  return page never credits.
+- USDT TRC20 via NOWPayments: invoice priced in USD at `USDT_PKR_RATE` (stored per deposit), credited only
+  on a signed `finished` IPN at `/api/webhooks/nowpayments` for the exact invoice amount.
+- Easypaisa: shown as "soon" until a merchant account and its integration documents are available.
+- `PAYMENTS_MODE` defaults to `sandbox` (test endpoints, test bank account). Set `live` only after sign-off.
+- Env: `JAZZCASH_MERCHANT_ID`, `JAZZCASH_PASSWORD`, `JAZZCASH_INTEGRITY_SALT`, `NOWPAYMENTS_API_KEY`,
+  `NOWPAYMENTS_IPN_SECRET`, `USDT_PKR_RATE`. A method stays "soon" until its keys are set.
+- Live bank account: `update app_settings set value = '{"bank":"…","title":"…","iban":"PK…"}' where key = 'bank_account';`
+
 ## Backend switch
 
 Until `C50_BACKEND=live` is set, the site runs in **preview mode**: the original front-end behaviour, with
@@ -65,5 +82,6 @@ returns taken from the bundled records. This keeps the shared demo link working 
 ```bash
 npm run dev              # local server
 npm run gen-seed         # regenerate 0002 from data/records.json
-npm run test:db          # migrations twice + RLS/trigger/rate-limit tests on a local Postgres
+npm run test:db          # migrations twice + SQL tests for every phase on a local Postgres
+npm test                 # unit tests (payment signatures, account builder)
 ```

@@ -4,6 +4,8 @@ import { PAGES, render, scriptJson, type PageName } from "@/lib/pages";
 import { createClient } from "@/lib/supabase/server";
 import { buildAccount, type LedgerRow } from "@/lib/account";
 import { kycState } from "@/lib/kyc-server";
+import { jazzcashConfig, nowpaymentsConfig, paymentsMode } from "@/lib/payments/config";
+import { bankAccount } from "@/lib/payments/deposits";
 
 export const dynamic = "force-dynamic";
 
@@ -52,9 +54,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
         since: String(p.created_at).slice(0, 7),
         code: p.referral_code,
         kyc: await kycState(user.id),
+        pay: {
+          mode: paymentsMode(),
+          methods: {
+            jazzcash: !!jazzcashConfig(),
+            easypaisa: false,
+            bank: paymentsMode() === "sandbox" || !!(await bankAccount()),
+            usdt: !!nowpaymentsConfig(),
+          },
+        },
       };
 
-      const [holdings, entries, closes] = await Promise.all([
+      const [holdings, entries, closes, pending] = await Promise.all([
         supabase.from("holdings").select("id, strategies(slug)").returns<{ id: string; strategies: { slug: string } }[]>(),
         supabase
           .from("ledger_entries")
@@ -64,8 +75,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
           .order("created_at")
           .returns<LedgerRow[]>(),
         supabase.from("month_closes").select("ym").order("ym", { ascending: false }).limit(1),
+        supabase.from("deposits").select("amount, created_at, strategies(slug)").eq("status", "pending")
+          .order("created_at", { ascending: false }).limit(20)
+          .returns<{ amount: number; created_at: string; strategies: { slug: string } }[]>(),
       ]);
-      const failed = holdings.error || entries.error || closes.error;
+      const failed = holdings.error || entries.error || closes.error || pending.error;
       if (failed) {
         console.error("dashboard: account load failed", failed.message);
         return new Response("We couldn't load your account. Please refresh in a moment.", { status: 503 });
@@ -73,6 +87,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
       const slugOf = new Map(holdings.data.map((h) => [h.id, h.strategies.slug]));
       const lastPublished = realData.records.kitchen?.at(-1)?.ym ?? new Date().toISOString().slice(0, 7);
       account = buildAccount(entries.data, slugOf, closes.data[0]?.ym ?? null, lastPublished);
+      // Deposits started but not yet confirmed show in the history as pending (never in balances).
+      for (const d of pending.data) {
+        const [y, m, day] = new Date(d.created_at).toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" }).split("-");
+        account.events.unshift({ t: "pd", ym: `${y}-${m}`, day: Number(day), id: d.strategies.slug, amt: Number(d.amount) });
+      }
     }
     let html = await render("dashboard", {
       __C50_REAL__: real,

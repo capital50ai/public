@@ -818,7 +818,7 @@ function spk(vals,col,bars){const W=100,Hh=26,mx=Math.max(...vals.map(Math.abs),
   const lo=Math.min(...vals),hi=Math.max(...vals),X=i=>i/(vals.length-1||1)*W,Y=v=>Hh-2-(v-lo)/((hi-lo)||1)*(Hh-4);
   return`<svg viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" aria-hidden="true"><path d="${vals.map((v,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1)).join(" ")}" fill="none" stroke="${col}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`}
 const kpiCard=k=>`<div class="card kpi"><span class="label">${icon(k.i)}${k.l}</span><b>${k.v}</b><small>${k.s}</small>${k.sp||""}</div>`;
-const evMeta={in:["arrow-down-left","in","Deposit"],pr:["trending-up","pr","Monthly profit"],ls:["trending-down","ls","Monthly loss"],fe:["percent","fe","Fee · 2.5% of profit"],af:["gift","af","Affiliate commission"]};
+const evMeta={pd:["clock","in","Deposit · awaiting confirmation"],in:["arrow-down-left","in","Deposit"],pr:["trending-up","pr","Monthly profit"],ls:["trending-down","ls","Monthly loss"],fe:["percent","fe","Fee · 2.5% of profit"],af:["gift","af","Affiliate commission"]};
 const evRow=e=>{const[ic,c,t]=evMeta[e.t];return`<div class="ev"><span class="b ${c}">${icon(ic)}</span><div><p>${t}</p><small>${e.id?B[e.id].name+" · ":""}${e.day} ${ymL(e.ym)}${e.r!=null?" · "+pct(e.r):""}${e.t==="af"?" · 15% of members' fees":""}</small></div><span class="a m ${e.amt<0?"neg":e.t==="in"?"":"pos"}">${e.amt>=0?"+":""}${Math.abs(e.amt)<100?rs2(e.amt):rs(e.amt)}</span></div>`};
 
 const C={mode:"acct",range:0,sel:new Set(H.map(h=>h.id))};
@@ -953,13 +953,23 @@ function initWallet(){
   let f="all",n=10;const render=()=>{const list=events.filter(e=>f==="all"||e.t===f||(f==="pr"&&e.t==="ls"));$("tl").innerHTML=list.slice(0,n).map(evRow).join("")||`<p class="label" style="padding:12px 0">Nothing here yet.</p>`;$("tlMore").hidden=list.length<=n};
   $$("#actF button").forEach(b=>b.onclick=()=>{f=b.dataset.f;n=10;$$("#actF button").forEach(x=>x.setAttribute("aria-pressed",x===b));render()});$("tlMore").onclick=()=>{n+=10;render()};render()}
 function statement(ym){const rows=[["Capital 50 AI — account statement"],["Investor",displayName()],["Period",ym?ymL(ym):"All"],["Note",ACCOUNT?"Account record from the Capital 50 AI ledger; published monthly returns":"Preview: sample deposits, published monthly returns"],[],["Month","Strategy","Type","Return %","Amount (PKR)"]];
-  [...events].filter(e=>!ym||e.ym===ym).sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(e=>rows.push([ymL(e.ym),e.id?B[e.id].name:"Affiliate",{in:"Deposit",pr:"Profit",ls:"Loss",fe:"Fee",af:"Affiliate commission"}[e.t],e.r??"",Math.round(e.amt*100)/100]));
+  [...events].filter(e=>e.t!=="pd"&&(!ym||e.ym===ym)).sort((a,b)=>a.ym.localeCompare(b.ym)).forEach(e=>rows.push([ymL(e.ym),e.id?B[e.id].name:"Affiliate",{in:"Deposit",pr:"Profit",ls:"Loss",fe:"Fee",af:"Affiliate commission"}[e.t],e.r??"",Math.round(e.amt*100)/100]));
   const L=ym?ledger.find(x=>x.ym===ym):ledger[ledger.length-1];if(L)rows.push([],["Closing balance","","","",Math.round(L.bal)]);
   dl(`capital50-statement-${ym||"all"}.csv`,csv(rows));toast("Statement downloaded")}
 $$("[data-stmt]").forEach(b=>b.onclick=()=>statement());
 
 /* deposit / withdraw sheets */
 const PAY=[["JC","JazzCash"],["EP","Easypaisa"],["BK","Bank transfer"],["₮","USDT (TRC20)"]];
+const PAYKEY=["jazzcash","easypaisa","bank","usdt"],payOn=i=>!ME||!ME.pay||ME.pay.methods[PAYKEY[i]],payFirst=()=>Math.max(0,PAY.findIndex((_,i)=>payOn(i)));
+/* live deposits: the server says how to pay; the balance only changes once the payment is confirmed */
+async function startDeposit(amount,into,method){const b=$("goM"),reset=m=>{$("amtErr").textContent=m;b.disabled=false;b.textContent="Continue"};b.disabled=true;b.textContent="Starting…";let j={};
+  try{const r=await fetch("/api/deposits",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({amount,strategy:into,method})});j=await r.json().catch(()=>({}));if(!r.ok)return reset(j.error||"Couldn't start the deposit. Try again.")}catch(e){return reset("No connection. Try again.")}
+  if(j.kind==="form"){const f=document.createElement("form");f.method="post";f.action=j.url;for(const[k,v]of Object.entries(j.fields)){const i=document.createElement("input");i.type="hidden";i.name=k;i.value=v;f.appendChild(i)}document.body.appendChild(f);f.submit();return}
+  if(j.kind==="redirect"){location.href=j.url;return}
+  if(j.kind==="bank")return bankSheet(j);reset("Couldn't start the deposit. Try again.")}
+function bankSheet(j){const a=j.account||{};open(`<h3>Bank transfer</h3>${j.sandbox?`<p class="label neg">Test mode: don't send real money.</p>`:""}<p class="label">Send exactly ${rs(j.amount)} and write this reference in the transfer remarks so we can match it.</p>
+  <div class="sum"><div><span>Reference</span><b>${esc(j.reference)}</b></div><div><span>Bank</span><b>${esc(a.bank)}</b></div><div><span>Account title</span><b>${esc(a.title)}</b></div><div><span>IBAN</span><b>${esc(a.iban)}</b></div><div><span>Starts earning</span><b>${esc(j.effective)}</b></div></div>
+  <button class="btn pri full" id="cpRef" style="margin-top:14px;height:50px">Copy reference</button><p class="fine" style="text-align:center">Two of our team check each transfer against the bank statement before it's added. Until then it shows in your history as awaiting confirmation.</p>`);$("cpRef").onclick=()=>copy(j.reference,"Reference copied")}
 function moneySheet(kind,into){const dep=kind==="deposit";
   if(!dep&&!kycOK()){open(`<div class="lockd">${img("kyc","art")}<h3>Verify to withdraw</h3><p class="label">Withdrawals unlock after your CNIC is verified. It takes about 3 minutes.</p><a class="btn pri full" href="#kyc" data-x>Start verification</a></div>`);return}
   if(!dep&&!ST.methods.length){open(`<div class="lockd">${img("withdraw","art")}<h3>Add a payout method</h3><p class="label">Add a JazzCash, Easypaisa, bank or USDT account in your own name first.</p><button class="btn pri full" id="goAdd">Add payout method</button></div>`);$("goAdd").onclick=methodSheet;return}
@@ -968,17 +978,17 @@ function moneySheet(kind,into){const dep=kind==="deposit";
     <div class="qk">${(dep?[5000,10000,25000,50000,100000]:[.25,.5,1]).map(v=>`<button data-q="${v}">${dep?nf.format(v):v===1?"All":v*100+"%"}</button>`).join("")}</div>
     ${dep?`<label class="label">Into</label><select id="into" class="sel" style="margin:6px 0 4px">${BOTS.map(b=>`<option value="${b.id}" ${b.id===into?"selected":""}>${b.name}</option>`).join("")}</select>`
       :`<label class="label">To</label><select id="to" class="sel" style="margin:6px 0 4px">${ST.methods.map((m,i)=>`<option value="${i}" ${Date.now()<m.readyAt?"disabled":""}>${METHOD_TYPES[m.type].n} · ${esc(mask(m.acct))}${Date.now()<m.readyAt?" (unlocks soon)":""}</option>`).join("")}</select>`}
-    ${dep?`<div class="opts">${PAY.map((m,i)=>`<button class="opt" aria-pressed="${i===0}" data-mt="${i}"><span class="b">${m[0]}</span><span>${m[1]}</span></button>`).join("")}</div>`:""}
+    ${dep?`<div class="opts">${PAY.map((m,i)=>`<button class="opt" aria-pressed="${i===payFirst()}" data-mt="${i}" ${payOn(i)?"":"disabled style=\"opacity:.45\""}><span class="b">${m[0]}</span><span>${m[1]}${payOn(i)?"":" · soon"}</span></button>`).join("")}</div>`:""}
     <div class="sum" id="sum"></div><span class="err" id="amtErr"></span>
     <button class="btn pri full" id="goM" style="height:50px">${dep?"Continue":"Review withdrawal"}</button>
-    <p class="fine" style="text-align:center">Deposits and withdrawals open at launch. Timing and any transfer fees are published first.</p>`);
+    ${ME&&dep?`<p class="fine" style="text-align:center">${ME.pay&&ME.pay.mode==="sandbox"?"Test mode: payments use test accounts only. ":""}Added once your payment is confirmed. Money paid this month starts earning on the 1st of next month.</p>`:`<p class="fine" style="text-align:center">Deposits and withdrawals open at launch. Timing and any transfer fees are published first.</p>`}`);
   const A=$("amt"),val=()=>+A.value.replace(/\D/g,"")||0;
   const sum=()=>{const v=val();$("sum").innerHTML=dep?`<div><span>Amount</span><b>${rs(v)}</b></div><div><span>Deposit fee</span><b>None</b></div><div><span>Fee on profit</span><b>2.5% of monthly profit</b></div>`:`<div><span>Amount</span><b>${rs(v)}</b></div><div><span>Left invested</span><b>${rs(Math.max(0,total-v))}</b></div><div><span>Transfer fee</span><b>Published before launch</b></div>`;
     $("amtErr").textContent=dep?(v&&v<MIN_DEP?"Minimum deposit is Rs 5,000.":""):(v>total?"That's more than your available balance.":v&&v<MIN_WD?"Minimum withdrawal is Rs 1,000.":"");$("goM").disabled=dep?v<MIN_DEP:(v<MIN_WD||v>total)};
   A.oninput=()=>{const d=A.value.replace(/\D/g,"").slice(0,9);A.value=d?nf.format(+d):"";sum()};
   $$("[data-q]",$("layer")).forEach(b=>b.onclick=()=>{const q=+b.dataset.q;A.value=nf.format(Math.round(dep?q:total*q));sum()});
   $$("[data-mt]",$("layer")).forEach(b=>b.onclick=()=>$$("[data-mt]",$("layer")).forEach(x=>x.setAttribute("aria-pressed",x===b)));
-  $("goM").onclick=()=>{if(dep){close();toast("Deposits open at launch — we'll notify you");return}otpSheet(`Withdraw ${rs(val())}`,()=>toast("Withdrawals open at launch. In the live app this request goes to review."))};sum()}
+  $("goM").onclick=()=>{if(dep&&ME){const s=$$("[data-mt]",$("layer")).find(x=>x.getAttribute("aria-pressed")==="true");startDeposit(val(),$("into").value,PAYKEY[s?+s.dataset.mt:payFirst()]);return}if(dep){close();toast("Deposits open at launch — we'll notify you");return}otpSheet(`Withdraw ${rs(val())}`,()=>toast("Withdrawals open at launch. In the live app this request goes to review."))};sum()}
 function otpSheet(title,done){open(`<h3>Confirm</h3><p class="label">${esc(title)}. Enter the 6-digit code sent to your phone.</p><div class="otp" id="otp">${Array.from({length:6},(_,i)=>`<input inputmode="numeric" maxlength="1" aria-label="Digit ${i+1}" ${i?"":'autocomplete="one-time-code"'}>`).join("")}</div><button class="btn pri full" id="otpGo" disabled style="margin-top:14px">Confirm</button>`);
   const bx=$$("#otp input");const sync=()=>{$("otpGo").disabled=bx.some(b=>!b.value)};
   bx.forEach((b,i)=>{b.oninput=()=>{b.value=b.value.replace(/\D/g,"").slice(-1);if(b.value&&bx[i+1])bx[i+1].focus();sync()};b.onkeydown=e=>{if(e.key==="Backspace"&&!b.value&&bx[i-1])bx[i-1].focus()};
@@ -1174,6 +1184,7 @@ $("bell").onclick=()=>{open(`<div class="dh"><h3>Notifications</h3><button class
 /* pick up ?ref from links like dashboard.html?ref= (not used for self) and boot */
 const INIT={overview:initOverview,strategies:initStrategies,wallet:initWallet,affiliate:initAffiliate,kyc:initKyc,profile:initProfile,support:initSupport};
 kycStatus();route();
+{const q=new URLSearchParams(location.search).get("deposit");if(q){toast(q==="processing"?"Payment received. It's added to your balance as soon as JazzCash confirms it.":"The payment wasn't completed. Nothing was charged to your balance.");history.replaceState(null,"",location.pathname+location.hash)}}
 let rzT,rzW=innerWidth;addEventListener("resize",()=>{if(innerWidth===rzW)return;rzW=innerWidth;clearTimeout(rzT);rzT=setTimeout(drawChart,150)});
 
 </script>

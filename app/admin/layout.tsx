@@ -10,7 +10,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <Link href="/admin/kyc" className="font-semibold tracking-tight">
           Capital 50 <span className="text-[#3FD8E8]">AI</span> <span className="text-slate-400 font-normal">· Staff</span>
         </Link>
-        <a href="/api/admin/logout" className="text-sm text-slate-400 hover:text-white">Log out</a>
+        <nav className="flex items-center gap-5 text-sm text-slate-400">
+          <Link href="/admin/kyc" className="hover:text-white">Identity checks</Link>
+          <Link href="/admin/deposits" className="hover:text-white">Deposits</Link>
+          <a href="/api/admin/logout" className="hover:text-white">Log out</a>
+        </nav>
       </header>
       <main className="mx-auto max-w-5xl px-5 py-8">{children}</main>
     </div>
