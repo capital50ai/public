@@ -24,6 +24,20 @@ The server fills in the strategy returns from the `strategy_returns` table.
 - Demo account holds the preview's sample deposits with real closes for Jul–Sep 2026
   (Rs 162,209.38, identical to the preview). Remove before launch: `select public.purge_demo_data();`
 
+## Phase 3 (identity verification)
+
+- `kyc_applications` (history kept), `kyc_documents`, private `kyc` storage bucket, `staff_members`.
+- Investors complete the dashboard's 5 KYC steps; each step is validated on the server (CNIC format,
+  18+, unexpired CNIC, one CNIC per person). Files are type-checked by content, max 5 MB, and photos are
+  re-encoded to drop EXIF/GPS. Only the server touches the bucket.
+- Staff log in at `/admin/login` (email + password + authenticator code, required). Owner/compliance
+  approve or reject (reason required) at `/admin/kyc`; documents open via 5-minute signed links.
+  Approval locks the profile name to the CNIC name. Every decision is in the audit log.
+- Add a staff member: create an email login in Supabase (Authentication → Users → Add user), then
+  `select public.grant_staff('email@example.com', 'owner');` (owner | compliance | finance | support).
+- Manual review until a KYC provider (NADRA check, liveness) is connected; `provider_ref`/`provider_result`
+  are ready for its webhook.
+
 ## Backend switch
 
 Until `C50_BACKEND=live` is set, the site runs in **preview mode**: the original front-end behaviour, with

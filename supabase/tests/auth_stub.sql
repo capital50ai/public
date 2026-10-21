@@ -17,3 +17,7 @@ $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 grant usage on schema public, auth to anon, authenticated, service_role;
 grant execute on function auth.uid() to anon, authenticated;
 alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+create schema if not exists storage;
+create table if not exists storage.buckets (
+  id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
+alter table auth.users add column if not exists email_confirmed_at timestamptz;

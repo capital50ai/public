@@ -746,7 +746,7 @@ const store={get(k,d){try{const v=localStorage.getItem("c50_"+k);return v==null?
 let firstName="Investor";try{firstName=(ME&&ME.name.split(/\s+/)[0])||sessionStorage.getItem("c50name")||store.get("name","Investor")}catch(e){}
 const ST={
   profile:ME?{name:ME.name,phone:ME.phone,email:ME.email,city:ME.city,since:ME.since}:store.get("profile",{name:firstName==="Investor"?"":firstName,phone:"",email:"",city:"",since:"2026-07"}),
-  kyc:store.get("kyc",{status:"none",step:0,data:{},files:{}}),
+  kyc:ME?ME.kyc:store.get("kyc",{status:"none",step:0,data:{},files:{}}),
   methods:store.get("methods",[]),
   tickets:store.get("tickets",[]),
   code:ME?ME.code:store.get("code",null),
@@ -1049,23 +1049,28 @@ function initAffiliate(){setShare();
    source of funds, PEP declaration). Files stay on this device in preview.
    ===================================================================== */
 const KSTEPS=["Personal","Financial","CNIC","Selfie","Review"];const kfiles={};
+/* live: every step is saved and checked on the server; preview (no ME) keeps the local-only flow */
+const kycFail=(j,fallback)=>{const m=(j&&j.error)||fallback;if(j&&j.field&&document.querySelector(`[data-e="${j.field}"]`))kErr(j.field,m);else toast(m);return false};
+const kycPost=async body=>{if(!ME)return true;try{const r=await fetch("/api/kyc",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body)});const j=await r.json().catch(()=>({}));return r.ok||kycFail(j,"Couldn't save. Please try again.")}catch(e){return kycFail(null,"No connection. Please try again.")}};
+const kycUpload=async(kind,file)=>{if(!ME)return true;const f=new FormData();f.append("kind",kind);f.append("file",file);toast("Uploading…");try{const r=await fetch("/api/kyc/upload",{method:"POST",body:f});const j=await r.json().catch(()=>({}));return r.ok||kycFail(j,"Upload failed. Please try again.")}catch(e){return kycFail(null,"No connection. Please try again.")}};
+const dataBlob=u=>{const[h,b]=u.split(",");const s=atob(b),a=new Uint8Array(s.length);for(let i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return new Blob([a],{type:h.slice(5,h.indexOf(";"))})};
 const cnicFmt=v=>{v=v.replace(/\D/g,"").slice(0,13);return v.length>12?v.slice(0,5)+"-"+v.slice(5,12)+"-"+v.slice(12):v.length>5?v.slice(0,5)+"-"+v.slice(5):v};
 const age=d=>{const b=new Date(d),n=new Date();let a=n.getFullYear()-b.getFullYear();if(n<new Date(n.getFullYear(),b.getMonth(),b.getDate()))a--;return a};
-function kycStatus(){const s=ST.kyc.status,map={none:["shield-alert","neg","Not verified"],draft:["clock","warn","In progress"],review:["clock","warn","Under review — usually within 24 hours"],verified:["badge-check","pos","Verified"]},[i,c,t]=map[s];
+function kycStatus(){const s=ST.kyc.status,map={none:["shield-alert","neg","Not verified"],draft:["clock","warn","In progress"],review:["clock","warn","Under review — usually within 24 hours"],verified:["badge-check","pos","Verified"],rejected:["shield-alert","neg","Not approved — please fix and resubmit"]},[i,c,t]=map[s];
   $("kycStatus").innerHTML=`<span class="kbadge ${c}">${icon(i)}${t}</span>`;$("kycNb").hidden=s==="verified";$("kycBan")&&($("kycBan").hidden=s==="verified")}
 function kField(id,label,attrs="",val=""){return`<div class="fld"><label for="${id}">${label}</label><div class="fi"><input id="${id}" ${attrs} value="${esc(val)}"></div><span class="err" data-e="${id}"></span></div>`}
 function kSel(id,label,opts,val){return`<div class="fld"><label for="${id}">${label}</label><select id="${id}" class="sel"><option value="">Select…</option>${opts.map(o=>`<option ${o===val?"selected":""}>${o}</option>`).join("")}</select><span class="err" data-e="${id}"></span></div>`}
 function kErr(id,m){const e=document.querySelector(`[data-e="${id}"]`);if(e)e.textContent=m||"";const i=$(id);if(i)(i.closest(".fi")||i).classList.toggle("bad",!!m);return!m}
 function renderKyc(){kycStatus();const k=ST.kyc,d=k.data;
-  $("kSteps").innerHTML=KSTEPS.map((s,i)=>`<div class="ks ${i<k.step||k.status==="review"||k.status==="verified"?"done":i===k.step?"on":""}"><span>${i<k.step||k.status!=="none"&&k.status!=="draft"?icon("circle-check"):i+1}</span><small>${s}</small></div>`).join("");
+  $("kSteps").innerHTML=KSTEPS.map((s,i)=>`<div class="ks ${i<k.step||k.status==="review"||k.status==="verified"?"done":i===k.step?"on":""}"><span>${i<k.step||k.status!=="none"&&k.status!=="draft"&&k.status!=="rejected"?icon("circle-check"):i+1}</span><small>${s}</small></div>`).join("");
   const F=$("kForm");
   if(k.status==="review"||k.status==="verified"){const v=k.status==="verified";
-    F.innerHTML=`<div class="kdone">${img(v?"kyc":"lock","art")}<h3>${v?"You're verified":"Submitted for review"}</h3><p class="label">${v?"Withdrawals and affiliate payouts are unlocked.":"We check your CNIC with NADRA and review your selfie. You'll get an SMS when it's done."}</p>
-      <div class="ktl">${[["Submitted",true],["NADRA check",v],["Liveness & face match",v],["Approved",v]].map(([t,ok])=>`<div class="${ok?"ok":""}"><i></i><span>${t}</span></div>`).join("")}</div>
-      ${v?`<a class="btn pri" href="#wallet">Go to wallet</a>`:`<button class="btn sm" id="kSim">Preview only: mark as verified</button>`}</div>`;
+    F.innerHTML=`<div class="kdone">${img(v?"kyc":"lock","art")}<h3>${v?"You're verified":"Submitted for review"}</h3><p class="label">${v?"Withdrawals and affiliate payouts are unlocked.":(ME?"Our team checks your CNIC and selfie, usually within 24 hours. The result shows here.":"We check your CNIC with NADRA and review your selfie. You'll get an SMS when it's done.")}</p>
+      <div class="ktl">${(ME?[["Submitted",true],["CNIC reviewed by our team",v],["Selfie checked against CNIC",v],["Approved",v]]:[["Submitted",true],["NADRA check",v],["Liveness & face match",v],["Approved",v]]).map(([t,ok])=>`<div class="${ok?"ok":""}"><i></i><span>${t}</span></div>`).join("")}</div>
+      ${v?`<a class="btn pri" href="#wallet">Go to wallet</a>`:(ME?"":`<button class="btn sm" id="kSim">Preview only: mark as verified</button>`)}</div>`;
     $("kSim")&&($("kSim").onclick=()=>{k.status="verified";save("kyc");renderKyc();toast("Verified (preview)")});return}
   const nav=(back)=>`<div class="knav">${back?`<button class="btn" id="kBack">Back</button>`:"<span></span>"}<button class="btn pri" id="kNext">${k.step===4?"Submit for review":"Continue"}${icon("arrow-right")}</button></div>`;
-  if(k.step===0){F.innerHTML=`<h3>Personal details</h3><p class="label">Exactly as printed on your CNIC.</p><div class="kg">
+  if(k.step===0){F.innerHTML=`<h3>Personal details</h3>${k.status==="rejected"?`<p class="label neg">Not approved: ${esc(k.reason||"")}. Please correct your details and submit again.</p>`:""}<p class="label">Exactly as printed on your CNIC.</p><div class="kg">
       ${kField("kName","Full name","autocomplete='name'",d.fullName||ST.profile.name||"")}${kField("kFather","Father / husband name","",d.father||"")}
       ${kField("kCnic","CNIC number","inputmode='numeric' placeholder='12345-1234567-1' maxlength='15'",d.cnic||"")}${kField("kDob","Date of birth","type='date'",d.dob||"")}
       ${kField("kIssue","CNIC expiry date","type='date'",d.expiry||"")}${kSel("kGender","Gender",["Male","Female","Other"],d.gender)}
@@ -1078,7 +1083,7 @@ function renderKyc(){kycStatus();const k=ST.kyc,d=k.data;
       ok=kErr("kDob",v("kDob")&&age(v("kDob"))>=18?"":"You must be 18 or older.")&&ok;
       ok=kErr("kIssue",v("kIssue")&&new Date(v("kIssue"))>new Date()?"":"Your CNIC has expired — renew it with NADRA first.")&&ok;
       ok=kErr("kGender",v("kGender")?"":"Required.")&&ok;ok=kErr("kAddr",v("kAddr").length>=8?"":"Enter your full address.")&&ok;ok=kErr("kCity",v("kCity").length>=2?"":"Required.")&&ok;
-      if(!ok)return;Object.assign(d,{fullName:v("kName"),father:v("kFather"),cnic:v("kCnic"),dob:v("kDob"),expiry:v("kIssue"),gender:v("kGender"),addr:v("kAddr"),city:v("kCity")});k.step=1;k.status="draft";save("kyc");renderKyc()}}
+      if(!ok)return;Object.assign(d,{fullName:v("kName"),father:v("kFather"),cnic:v("kCnic"),dob:v("kDob"),expiry:v("kIssue"),gender:v("kGender"),addr:v("kAddr"),city:v("kCity")});kycPost({step:"personal",data:d}).then(s=>{if(!s)return;k.step=1;k.status="draft";save("kyc");renderKyc()})}}
   else if(k.step===1){F.innerHTML=`<h3>Financial profile</h3><p class="label">Required under anti-money-laundering rules. We don't share it.</p><div class="kg">
       ${kSel("kOcc","Occupation",["Salaried (private)","Salaried (government)","Business owner","Freelancer","Student","Homemaker","Retired","Other"],d.occ)}
       ${kSel("kSrc","Main source of the money you'll invest",["Salary","Business income","Savings","Family support","Inheritance","Sale of property","Freelance income","Other"],d.src)}
@@ -1089,12 +1094,12 @@ function renderKyc(){kycStatus();const k=ST.kyc,d=k.data;
     $$("#kPep button").forEach(b=>b.onclick=()=>{$$("#kPep button").forEach(x=>x.setAttribute("aria-pressed",x===b));d.pep=b.textContent});
     $("kBack").onclick=()=>{k.step=0;save("kyc");renderKyc()};
     $("kNext").onclick=()=>{let ok=true;["kOcc","kSrc","kInc","kExp"].forEach(id=>ok=kErr(id,$(id).value?"":"Required.")&&ok);ok=kErr("kPep",d.pep?"":"Please answer.")&&ok;ok=kErr("kOwn",$("kOwn").checked?"":"Required to continue.")&&ok;
-      if(!ok)return;Object.assign(d,{occ:$("kOcc").value,src:$("kSrc").value,inc:$("kInc").value,exp:$("kExp").value,own:true});k.step=2;save("kyc");renderKyc()}}
-  else if(k.step===2){const up=(id,t)=>`<label class="drop ${kfiles[id]?"has":""}" for="${id}">${kfiles[id]?`<img src="${kfiles[id]}" alt="${t} preview">`:`${icon("id-card")}<b>${t}</b><small>JPG, PNG or PDF · max 5 MB</small>`}<input type="file" id="${id}" accept="image/jpeg,image/png,application/pdf" capture="environment" hidden></label>`;
+      if(!ok)return;Object.assign(d,{occ:$("kOcc").value,src:$("kSrc").value,inc:$("kInc").value,exp:$("kExp").value,own:true});kycPost({step:"financial",data:d}).then(s=>{if(!s)return;k.step=2;save("kyc");renderKyc()})}}
+  else if(k.step===2){const up=(id,t)=>`<label class="drop ${kfiles[id]?"has":""}" for="${id}">${kfiles[id]?`<img src="${kfiles[id]}" alt="${t} preview">`:k.files[id]?`${icon("circle-check")}<b>${t} uploaded</b><small>Tap to replace</small>`:`${icon("id-card")}<b>${t}</b><small>JPG, PNG or PDF · max 5 MB</small>`}<input type="file" id="${id}" accept="image/jpeg,image/png,application/pdf" capture="environment" hidden></label>`;
     F.innerHTML=`<h3>Upload your CNIC</h3><p class="label">Clear photos of both sides. All four corners visible, no glare.</p><div class="kup">${up("kFront","Front side")}${up("kBack","Back side")}</div><span class="err" data-e="kFiles"></span>
       <ul class="tips"><li>${icon("circle-check")}Original card, not a photocopy</li><li>${icon("circle-check")}Flat surface, good light</li><li>${icon("circle-check")}Text readable when zoomed in</li></ul>${nav(true)}`;
     ["kFront","kBack"].forEach(id=>$(id).onchange=e=>{const f=e.target.files[0];if(!f)return;if(f.size>5e6){toast("File is over 5 MB");return}if(!/^(image\/(jpeg|png)|application\/pdf)$/.test(f.type)){toast("Use JPG, PNG or PDF");return}
-      if(f.type==="application/pdf"){kfiles[id]="pdf";k.files[id]=f.name;save("kyc");renderKyc();return}const r=new FileReader();r.onload=()=>{kfiles[id]=r.result;k.files[id]=f.name;save("kyc");renderKyc()};r.readAsDataURL(f)});
+      kycUpload(id,f).then(s=>{if(!s)return;if(f.type==="application/pdf"){kfiles[id]="pdf";k.files[id]=f.name;save("kyc");renderKyc();return}const r=new FileReader();r.onload=()=>{kfiles[id]=r.result;k.files[id]=f.name;save("kyc");renderKyc()};r.readAsDataURL(f)})});
     $$(".drop img").forEach(i=>{if(i.getAttribute("src")==="pdf")i.replaceWith(Object.assign(document.createElement("b"),{textContent:"PDF attached"}))});
     $("kBack").onclick=()=>{k.step=1;save("kyc");renderKyc()};
     $("kNext").onclick=()=>{if(!(kfiles.kFront||k.files.kFront)||!(kfiles.kBack||k.files.kBack)){kErr("kFiles","Upload both sides to continue.");return}k.step=3;save("kyc");renderKyc()}}
@@ -1104,9 +1109,9 @@ function renderKyc(){kycStatus();const k=ST.kyc,d=k.data;
       <span class="err" data-e="kSelf"></span><ul class="tips"><li>${icon("circle-check")}Face inside the oval, eyes open</li><li>${icon("circle-check")}No sunglasses, cap or mask</li><li>${icon("circle-check")}In the live app you'll be asked to turn your head slowly</li></ul>${nav(true)}`;
     let stream=null;const stop=()=>{stream&&stream.getTracks().forEach(t=>t.stop());stream=null};
     $("kStart")&&($("kStart").onclick=async()=>{try{stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:720}},audio:false});const v=$("kVid");v.srcObject=stream;await v.play();$("kStart").hidden=true;$("kShot").hidden=false}catch(e){toast("Camera not available — upload a selfie instead")}});
-    $("kShot")&&($("kShot").onclick=()=>{const v=$("kVid"),c=$("kCan");c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext("2d");x.translate(c.width,0);x.scale(-1,1);x.drawImage(v,0,0);kfiles.selfie=c.toDataURL("image/jpeg",.85);k.files.selfie="camera";stop();save("kyc");renderKyc()});
+    $("kShot")&&($("kShot").onclick=()=>{const v=$("kVid"),c=$("kCan");c.width=v.videoWidth;c.height=v.videoHeight;const x=c.getContext("2d");x.translate(c.width,0);x.scale(-1,1);x.drawImage(v,0,0);const u=c.toDataURL("image/jpeg",.85);stop();kycUpload("selfie",dataBlob(u)).then(s=>{if(!s)return;kfiles.selfie=u;k.files.selfie="camera";save("kyc");renderKyc()})});
     $("kRetake")&&($("kRetake").onclick=()=>{delete kfiles.selfie;delete k.files.selfie;save("kyc");renderKyc()});
-    $("kSelfFile").onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{kfiles.selfie=r.result;k.files.selfie=f.name;stop();save("kyc");renderKyc()};r.readAsDataURL(f)};
+    $("kSelfFile").onchange=e=>{const f=e.target.files[0];if(!f)return;if(f.size>5e6){toast("File is over 5 MB");return}if(!/^image\/(jpeg|png)$/.test(f.type)){toast("Use a JPG or PNG photo");return}kycUpload("selfie",f).then(s=>{if(!s)return;const r=new FileReader();r.onload=()=>{kfiles.selfie=r.result;k.files.selfie=f.name;stop();save("kyc");renderKyc()};r.readAsDataURL(f)})};
     $("kBack").onclick=()=>{stop();k.step=2;save("kyc");renderKyc()};
     $("kNext").onclick=()=>{if(!kfiles.selfie&&!k.files.selfie){kErr("kSelf","Take or upload a selfie to continue.");return}stop();k.step=4;save("kyc");renderKyc()}}
   else{const row=(a,b)=>`<div><span>${a}</span><b>${esc(b||"—")}</b></div>`;
@@ -1114,7 +1119,7 @@ function renderKyc(){kycStatus();const k=ST.kyc,d=k.data;
       <div class="kv">${row("Full name",d.fullName)}${row("Father / husband",d.father)}${row("CNIC",d.cnic)}${row("Date of birth",d.dob)}${row("CNIC expiry",d.expiry)}${row("Address",d.addr+", "+d.city)}${row("Occupation",d.occ)}${row("Source of funds",d.src)}${row("Monthly income",d.inc)}${row("PEP",d.pep)}${row("Documents","CNIC front, back, selfie")}</div>
       <label class="chk" style="margin-top:14px"><input type="checkbox" id="kDecl"><span>I confirm this information is true and agree that Capital 50 AI may verify it with NADRA and screen it against sanctions lists.</span></label><span class="err" data-e="kDecl"></span>${nav(true)}`;
     $("kBack").onclick=()=>{k.step=3;save("kyc");renderKyc()};
-    $("kNext").onclick=()=>{if(!$("kDecl").checked){kErr("kDecl","Please confirm to submit.");return}k.status="review";k.submitted=Date.now();ST.profile.name=d.fullName;save("profile");save("kyc");renderKyc();toast("Submitted for review")}}}
+    $("kNext").onclick=()=>{if(!$("kDecl").checked){kErr("kDecl","Please confirm to submit.");return}kycPost({step:"submit",declaration:true}).then(s=>{if(!s)return;k.status="review";k.submitted=Date.now();ST.profile.name=d.fullName;save("profile");save("kyc");renderKyc();toast("Submitted for review")})}}}
 function initKyc(){renderKyc()}
 
 /* =====================================================================

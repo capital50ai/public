@@ -3,6 +3,7 @@ import { getReal } from "@/lib/returns";
 import { PAGES, render, scriptJson, type PageName } from "@/lib/pages";
 import { createClient } from "@/lib/supabase/server";
 import { buildAccount, type LedgerRow } from "@/lib/account";
+import { kycState } from "@/lib/kyc-server";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
         city: p.city ?? "",
         since: String(p.created_at).slice(0, 7),
         code: p.referral_code,
+        kyc: await kycState(user.id),
       };
 
       const [holdings, entries, closes] = await Promise.all([
