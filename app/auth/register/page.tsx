@@ -1,23 +1,23 @@
 "use client";
 
 import { useOtp } from "@/lib/auth/use-otp";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const otp = useOtp();
   const [referralCode, setReferralCode] = useState("");
 
   useEffect(() => {
-    const ref = searchParams.get("ref");
+    const params = new URLSearchParams(window.location.search);
+    const ref = params.get("ref");
     if (ref) {
       setReferralCode(ref);
       localStorage.setItem("referral_code", ref);
     }
-  }, [searchParams]);
+  }, []);
 
   const handlePhoneSubmit = async (e: FormEvent) => {
     e.preventDefault();
