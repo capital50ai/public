@@ -14,11 +14,13 @@ export default async function StrategyPage({ params }: { params: { id: string } 
     .single();
 
   // Fetch returns
-  const { data: returns = [] } = await supabase
+  const { data: returnsData } = await supabase
     .from("strategy_returns")
     .select("*")
     .eq("strategy_id", params.id)
     .order("year_month", { ascending: true });
+
+  const returns = returnsData || [];
 
   if (!strategy) {
     return (
