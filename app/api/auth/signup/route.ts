@@ -21,9 +21,6 @@ export async function POST(req: Request) {
     return fail("Use 8+ characters with a mix of uppercase, numbers or symbols.", 400, "password");
   if (body.terms !== true) return fail("Please confirm you understand the risks.", 400, "terms");
 
-  if (!(await withinLimit(`otp:phone:${phone}`, 3, 3600)) || !(await withinLimit(`otp:ip:${ip}`, 10, 3600)))
-    return fail(TOO_MANY_CODES, 429, "phone");
-
   const admin = createAdminClient();
   const { data: emailOwner } = await admin.from("profiles").select("phone").eq("email", email).maybeSingle();
   if (emailOwner && emailOwner.phone !== phone)
@@ -35,8 +32,12 @@ export async function POST(req: Request) {
     const { data: u } = await admin.auth.admin.getUserById(existing.user_id);
     if (u.user?.phone_confirmed_at)
       return fail("An account with this number already exists. Log in instead.", 409, "phone");
-    await admin.auth.admin.deleteUser(existing.user_id);
   }
+
+  // Counted only when a code is about to be sent, so fixing a typo above never uses up the allowance.
+  if (!(await withinLimit(`otp:phone:${phone}`, 3, 3600)) || !(await withinLimit(`otp:ip:${ip}`, 10, 3600)))
+    return fail(TOO_MANY_CODES, 429, "phone");
+  if (existing) await admin.auth.admin.deleteUser(existing.user_id);
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signUp({
