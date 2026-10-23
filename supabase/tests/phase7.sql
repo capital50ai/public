@@ -111,4 +111,45 @@ do $$ begin
 end $$;
 reset role;
 rollback;
+-- demo purge works even when the demo account has identity records, tickets, deposits and members;
+-- launch reset clears test money but refuses when a live deposit exists
+begin;
+insert into auth.users (id, phone, email, raw_user_meta_data) values
+  ('00000000-0000-0000-0000-0000000000f1', null, 'owner@c50.test', '{}'),
+  ('00000000-0000-0000-0000-0000000000d9', '923001234567', null, '{"full_name":"Demo Investor"}'),
+  ('00000000-0000-0000-0000-0000000000d2', '923000000702', null, '{"full_name":"Real Person"}');
+select public.grant_staff('owner@c50.test', 'owner');
+update public.profiles set referred_by = (select id from public.profiles where user_id = '00000000-0000-0000-0000-0000000000d9')
+ where user_id = '00000000-0000-0000-0000-0000000000d2';
+insert into public.kyc_applications (id, user_id, status, cnic_hash) values ('00000000-0000-0000-0000-00000000aa01', '00000000-0000-0000-0000-0000000000d9', 'verified', 'demo-cnic');
+insert into public.kyc_documents (application_id, user_id, kind, storage_path, mime, size_bytes, sha256)
+  values ('00000000-0000-0000-0000-00000000aa01', '00000000-0000-0000-0000-0000000000d9', 'selfie', 'demo/selfie.jpg', 'image/jpeg', 10, 'x');
+insert into public.deposits (id, user_id, strategy_id, amount, method, reference) select '00000000-0000-0000-0000-00000000de91', '00000000-0000-0000-0000-0000000000d9', id, 10000, 'bank', 'C50-D91' from public.strategies where slug = 'gold';
+insert into public.payment_events (provider, deposit_id, signature_ok, outcome, payload) values ('bank', '00000000-0000-0000-0000-00000000de91', true, 'test', '{}');
+select public.credit_deposit('00000000-0000-0000-0000-00000000de91', null, 'test', 'D91');
+insert into public.deposits (id, user_id, strategy_id, amount, method, reference) select '00000000-0000-0000-0000-00000000de92', '00000000-0000-0000-0000-0000000000d2', id, 20000, 'bank', 'C50-D92' from public.strategies where slug = 'gold';
+select public.credit_deposit('00000000-0000-0000-0000-00000000de92', null, 'test', 'D92');
+select public.open_ticket('00000000-0000-0000-0000-0000000000d9', 'Other', 'Demo ticket', 'Hello');
+insert into public.nominees (user_id, full_name, relation, cnic_enc, cnic_hint) values ('00000000-0000-0000-0000-0000000000d9', 'Demo Nominee', 'Spouse', 'x', 'x');
+do $$ declare j jsonb; begin
+  perform public.purge_demo_data();
+  assert not exists (select 1 from auth.users where phone = '923001234567'), 'demo still there';
+  assert not exists (select 1 from public.kyc_applications where user_id = '00000000-0000-0000-0000-0000000000d9'), 'demo kyc left';
+  assert (select referred_by from public.profiles where user_id = '00000000-0000-0000-0000-0000000000d2') is null, 'member unlinked';
+  assert public.ledger_balance('00000000-0000-0000-0000-0000000000d2') = 20000, 'other investor untouched';
+  assert exists (select 1 from public.audit_log where action = 'demo.purge'), 'purge audited';
+  perform pg_temp.fails($q$select public.prepare_for_launch('00000000-0000-0000-0000-0000000000f1', 'yes')$q$, 'Type RESET TEST MONEY%');
+  j := public.prepare_for_launch('00000000-0000-0000-0000-0000000000f1', 'RESET TEST MONEY');
+  assert (j->>'ledger_rows')::int = 1, 'reset counted ' || j::text;
+  assert public.ledger_balance('00000000-0000-0000-0000-0000000000d2') = 0, 'test money cleared';
+  assert (select status from public.deposits where reference = 'C50-D92') = 'refunded', 'deposit marked';
+  assert exists (select 1 from public.profiles where user_id = '00000000-0000-0000-0000-0000000000d2'), 'investor kept';
+  assert (public.run_reconciliation('test')->>'ok')::boolean, 'books balance after reset';
+  update public.deposits set mode = 'live' where reference = 'C50-D92';
+  perform pg_temp.fails($q$select public.prepare_for_launch('00000000-0000-0000-0000-0000000000f1', 'RESET TEST MONEY')$q$, 'Real (live-mode) deposits exist%');
+  perform public.open_ticket('00000000-0000-0000-0000-0000000000d2', 'Other', 'Real ticket', 'Hello');
+  begin delete from public.ticket_messages; raise exception 'deleted messages';
+  exception when raise_exception then assert sqlerrm = 'ticket_messages is append-only', sqlerrm; end;
+end $$;
+rollback;
 \echo PHASE 7 ADMIN TESTS PASSED

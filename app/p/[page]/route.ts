@@ -14,13 +14,16 @@ export const dynamic = "force-dynamic";
 
 const PREVIEW_NOTE =
   '<b style="color:var(--fg)">Preview.</b> Accounts open at launch. Nothing you type here leaves this device; continuing opens the dashboard preview.';
-const LIVE_NOTE =
-  '<b style="color:var(--fg)">Early access.</b> Your account is real. Deposits open at launch.';
+// Wording follows PAYMENTS_MODE so it never says "test" once real payments are on (or vice versa).
+const liveNote = () => paymentsMode() === "live"
+  ? '<b style="color:var(--fg)">Secure sign-in.</b> Your account and balances are real.'
+  : '<b style="color:var(--fg)">Early access.</b> Your account is real. Payments stay in test mode until launch.';
 
 const PREVIEW_RIBBON =
   "<b>Preview.</b> Sample deposits and members; every monthly return is the published record. Nothing here moves real money.";
-const LIVE_RIBBON =
-  "<b>Early access.</b> Balances come from your account ledger and the published monthly records. Deposits open at launch.";
+const liveRibbon = () => paymentsMode() === "live"
+  ? "<b>Your account.</b> Balances come from your account ledger and the published monthly records. Results can be negative."
+  : "<b>Early access.</b> Balances come from your account ledger and the published monthly records. Payments are in test mode until launch.";
 
 const HTML = { "content-type": "text/html; charset=utf-8" };
 
@@ -37,7 +40,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
     if (isLive()) {
       // Everything in one parallel round trip. RLS limits each read to the signed-in investor.
       const supabase = await createClient();
-      const [{ data: { user } }, profile, kyc, bank, holdings, entries, closes, pending, methods, withdrawals, aff, tickets] = await Promise.all([
+      const [{ data: { user } }, profile, kyc, bank, holdings, entries, closes, pending, methods, withdrawals, aff, tickets, nominee] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from("profiles").select("full_name, phone, email, city, referral_code, created_at, prefs, leaderboard_opt_in").maybeSingle(),
         kycState(supabase).catch((e: Error) => e),
@@ -58,6 +61,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
           .in("status", ["requested", "approved", "rejected"]).order("created_at", { ascending: false }).limit(30),
         supabase.rpc("my_affiliate_summary"),
         supabase.from("tickets").select(TICKET_COLS).order("created_at", { ascending: false }).limit(20),
+        supabase.rpc("my_nominee"),
       ]);
       if (!user) return Response.redirect(new URL("/auth.html", req.url), 303);
       const p = profile.data;
@@ -78,6 +82,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
         code: p.referral_code,
         prefs: { ...(p.prefs as Record<string, unknown>), lb: p.leaderboard_opt_in, "2fa": true, wlock: true },
         aff: aff.error ? null : aff.data,
+        nominee: nominee.error ? null : nominee.data ?? null,
         kyc,
         pay: {
           mode: paymentsMode(),
@@ -90,9 +95,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
         },
       };
 
-      // Affiliate figures are optional: if they can't load, the rest of the dashboard still works.
-      if (aff.error) console.error("dashboard: affiliate summary failed", aff.error.message);
-      const failed = holdings.error || entries.error || closes.error || pending.error || methods.error || withdrawals.error || tickets.error;
+      // Affiliate figures, tickets and nominee are optional: if they can't load, the rest of the dashboard still works.
+      for (const [what, r] of [["affiliate summary", aff], ["tickets", tickets], ["nominee", nominee]] as const)
+        if (r.error) console.error(`dashboard: ${what} failed`, r.error.message);
+      const failed = holdings.error || entries.error || closes.error || pending.error || methods.error || withdrawals.error;
       if (failed) {
         console.error("dashboard: account load failed", failed.message);
         return new Response("We couldn't load your account. Please refresh in a moment.", { status: 503 });
@@ -107,8 +113,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
       me.notices = withdrawals.data
         .filter((w) => w.status === "rejected" && Date.parse(w.updated_at) > Date.now() - 30 * 864e5)
         .map((w) => ({ i: "x", t: "Withdrawal not approved", s: `Rs ${Number(w.amount).toLocaleString("en-US")}: ${w.reason ?? ""}`, h: "#wallet" }));
-      me.tickets = tickets.data.map((t) => ticketToClient(t as Parameters<typeof ticketToClient>[0]));
-      for (const t of tickets.data.filter((t) => t.status === "answered"))
+      me.tickets = (tickets.data ?? []).map((t) => ticketToClient(t as Parameters<typeof ticketToClient>[0]));
+      for (const t of (tickets.data ?? []).filter((t) => t.status === "answered"))
         (me.notices as object[]).push({ i: "mail", t: "Support replied", s: `#${t.ref} · ${t.subject}`, h: "#support" });
       for (const w of open) {
         const [y, m, day] = new Date(w.created_at).toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" }).split("-");
@@ -125,14 +131,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
       __C50_ME__: scriptJson(me),
       __C50_ACCOUNT__: scriptJson(account),
     });
-    if (account) html = html.split(PREVIEW_RIBBON).join(LIVE_RIBBON);
+    if (account) html = html.split(PREVIEW_RIBBON).join(liveRibbon());
     const rates = (me?.aff as { rates?: AffiliateRates } | null)?.rates;
     if (rates) html = affiliateCopy(html, { fee: Number(rates.fee), dep: Number(rates.dep) });
     return new Response(html, { headers: { ...HTML, "cache-control": "private, no-store" } });
   }
 
   let html = await render(name, { __C50_REAL__: real });
-  if (name === "auth" && isLive()) html = html.split(PREVIEW_NOTE).join(LIVE_NOTE);
+  if (name === "auth" && isLive()) html = html.split(PREVIEW_NOTE).join(liveNote());
   return new Response(html, {
     headers: { ...HTML, "cache-control": "public, max-age=0, s-maxage=300, stale-while-revalidate=86400" },
   });

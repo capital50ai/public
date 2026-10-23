@@ -108,12 +108,31 @@ export default async function Settings({ searchParams }: { searchParams: Promise
       <Card>
         <h2 className="mb-3 font-semibold">Launch checklist</h2>
         <ul className="space-y-1 text-sm">
-          <li>{demo ? "To do" : "Done"} · Demo account removed {demo && <span className="text-slate-400">(SQL Editor: <code>select public.purge_demo_data();</code>)</span>}</li>
+          <li>{demo ? "To do" : "Done"} · Demo account removed</li>
           <li>{bank.iban ? "Done" : "To do"} · Company bank account set</li>
           <li>{(staff?.filter((s) => s.active).length ?? 0) >= 2 ? "Done" : "To do"} · At least two staff with money roles (bank deposits and large withdrawals need two people)</li>
           <li>Check · Payment keys and PAYMENTS_MODE=live set in Vercel only after a real test payment</li>
           <li>Check · CRON_SECRET set in Vercel (daily reconciliation)</li>
         </ul>
+        <div className="mt-5 space-y-4 border-t border-white/10 pt-4">
+          {demo && (
+            <form method="post" action="/api/admin/launch" className="flex flex-wrap items-center gap-2">
+              <input type="hidden" name="op" value="demo" />
+              <input name="confirm" required placeholder="Type REMOVE DEMO" className={field} />
+              <button className={btnDanger}>Remove demo account</button>
+              <span className="text-xs text-slate-500">Deletes 300 1234567 and everything it holds. Other accounts are untouched.</span>
+            </form>
+          )}
+          <form method="post" action="/api/admin/launch" className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="op" value="reset" />
+            <input name="confirm" required placeholder="Type RESET TEST MONEY" className={field} />
+            <button className={btnDanger}>Reset all test money</button>
+            <span className="text-xs text-slate-500">
+              Once, right before launch: clears every balance, withdrawal and commission made while testing. Accounts, identity checks and
+              payout methods stay. Refuses if any real (live-mode) payment exists.
+            </span>
+          </form>
+        </div>
       </Card>
     </div>
   );

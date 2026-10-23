@@ -137,9 +137,20 @@ create table if not exists public.ticket_messages (
   created_at timestamptz not null default now()
 );
 create index if not exists ticket_messages_ticket on public.ticket_messages (ticket_id, created_at);
+-- Append-only, like the ledger: only the owner's demo/test purge (transaction-local flag) can delete.
+create or replace function public.append_only_unless_purge() returns trigger
+language plpgsql as $$
+begin
+  if tg_op = 'DELETE' and current_setting('c50.ledger_purge', true) = 'on' then return old; end if;
+  raise exception '% is append-only', tg_table_name;
+end $$;
+
 drop trigger if exists ticket_messages_no_change on public.ticket_messages;
 create trigger ticket_messages_no_change before update or delete on public.ticket_messages
-  for each row execute function public.audit_log_immutable();
+  for each row execute function public.append_only_unless_purge();
+drop trigger if exists payment_events_no_change on public.payment_events;
+create trigger payment_events_no_change before update or delete on public.payment_events
+  for each row execute function public.append_only_unless_purge();
 
 create or replace function public.open_ticket(p_user uuid, p_category text, p_subject text, p_body text) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -205,12 +216,92 @@ end $$;
 create table if not exists public.nominees (
   user_id    uuid primary key references auth.users(id) on delete cascade,
   full_name  text not null check (length(full_name) between 3 and 80),
-  relation   text not null check (relation in ('Spouse', 'Parent', 'Child', 'Sibling', 'Other')),
+  relation   text not null check (relation in ('Spouse', 'Father', 'Mother', 'Son', 'Daughter', 'Brother', 'Sister', 'Other')),
   cnic_enc   text not null,
   cnic_hint  text not null,
   phone      text,
   updated_at timestamptz not null default now()
 );
+
+-- The signed-in investor's nominee, without the encrypted CNIC.
+create or replace function public.my_nominee() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object('name', full_name, 'rel', relation, 'hint', cnic_hint) from nominees where user_id = auth.uid()
+$$;
+revoke execute on function public.my_nominee() from public, anon;
+grant execute on function public.my_nominee() to authenticated, service_role;
+
+-- ------------------------------------------------------------- launch reset
+-- Removes one account and everything it owns (money rows, identity records, tickets). Used for the
+-- demo account and test accounts before launch. Returns the KYC file paths so the server can delete
+-- the files through the Storage API (Supabase doesn't allow deleting them from SQL).
+-- The audit log keeps its history.
+create or replace function public.purge_user_data(p_uid uuid) returns text[]
+language plpgsql security definer set search_path = public as $$
+declare v_files text[];
+begin
+  select coalesce(array_agg(storage_path), '{}') into v_files from kyc_documents where user_id = p_uid;
+  perform set_config('c50.ledger_purge', 'on', true);
+  delete from affiliate_commissions where affiliate_id = p_uid or member_id = p_uid;
+  delete from ledger_entries where user_id = p_uid;
+  delete from withdrawals where user_id = p_uid;
+  delete from payout_methods where user_id = p_uid;
+  delete from payment_events where deposit_id in (select id from deposits where user_id = p_uid);
+  delete from deposits where user_id = p_uid;
+  delete from kyc_documents where user_id = p_uid;
+  delete from kyc_applications where user_id = p_uid;
+  delete from tickets where user_id = p_uid;
+  delete from holdings where user_id = p_uid;
+  delete from auth.users where id = p_uid;
+  perform set_config('c50.ledger_purge', 'off', true);
+  return v_files;
+end $$;
+
+create or replace function public.purge_demo_data() returns void
+language plpgsql security definer set search_path = public as $$
+declare v_uid uuid;
+begin
+  select id into v_uid from auth.users where phone = '923001234567';
+  if v_uid is null then return; end if;
+  perform purge_user_data(v_uid);
+  insert into audit_log (actor_role, action, entity, entity_id, reason)
+  values ('system', 'demo.purge', 'auth.users', v_uid::text, 'Demo account and sample money removed');
+end $$;
+
+-- Owner, before launch: removes the demo account, then all test money. Refuses if a single live-mode
+-- deposit exists, so it can never touch real money. Investor accounts, identity checks and payout
+-- methods stay; closed months stay closed (their totals are zeroed to match the empty ledger).
+create or replace function public.prepare_for_launch(p_staff uuid, p_confirm text) returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  v_demo  uuid := (select id from auth.users where phone = '923001234567');
+  v_files text[] := '{}';
+  v       jsonb;
+begin
+  perform require_staff(p_staff, array['owner']::staff_role[]);
+  if p_confirm is distinct from 'RESET TEST MONEY' then raise exception 'Type RESET TEST MONEY to confirm'; end if;
+  if exists (select 1 from deposits where mode = 'live') then
+    raise exception 'Real (live-mode) deposits exist, so nothing was reset';
+  end if;
+  if v_demo is not null then v_files := purge_user_data(v_demo); end if;
+  v := jsonb_build_object('demo_removed', v_demo is not null,
+         'ledger_rows', (select count(*) from ledger_entries), 'withdrawals', (select count(*) from withdrawals),
+         'deposits', (select count(*) from deposits where status in ('paid', 'pending')),
+         'commissions', (select count(*) from affiliate_commissions));
+  perform set_config('c50.ledger_purge', 'on', true);
+  delete from affiliate_commissions;
+  delete from ledger_entries;
+  delete from withdrawals;
+  update deposits set status = case when status = 'paid' then 'refunded' else 'expired' end::deposit_status,
+         status_note = 'Test money removed before launch'
+   where status in ('paid', 'pending');
+  update month_closes set holdings = 0, total_profit = 0, total_fees = 0;
+  delete from holdings h where not exists (select 1 from ledger_entries l where l.holding_id = h.id);
+  perform set_config('c50.ledger_purge', 'off', true);
+  insert into audit_log (actor_id, actor_role, action, entity, reason, after)
+  values (p_staff, 'owner', 'launch.reset', 'ledger_entries', 'Test money removed before launch', v);
+  return v || jsonb_build_object('files', to_jsonb(v_files));
+end $$;
 
 -- ------------------------------------------------------------------ settings
 -- Owner-only. Each setting is range-checked here so a typo can't set a 500% commission.
@@ -420,7 +511,8 @@ do $$ declare f text; begin
     'set_strategy_return(uuid,text,date,numeric,return_status,text)', 'preview_month_close(date)', 'staff_close_month(uuid,date)',
     'open_ticket(uuid,text,text,text)', 'ticket_reply(uuid,uuid,boolean,text)', 'ticket_close(uuid,uuid,boolean)',
     'set_setting(uuid,text,jsonb)', 'staff_grant(uuid,text,staff_role)', 'staff_revoke(uuid,uuid)',
-    'run_reconciliation(text)', 'admin_overview()', 'admin_users(text,text,int)'] loop
+    'run_reconciliation(text)', 'admin_overview()', 'admin_users(text,text,int)',
+    'purge_user_data(uuid)', 'purge_demo_data()', 'prepare_for_launch(uuid,text)'] loop
     execute format('revoke execute on function public.%s from public, anon, authenticated', f);
     execute format('grant execute on function public.%s to service_role', f);
   end loop;
