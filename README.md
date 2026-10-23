@@ -128,6 +128,19 @@ returns taken from the bundled records. This keeps the shared demo link working 
   payment exists; accounts, identity checks and payout methods stay).
 - Security headers on every page: HSTS, no framing, nosniff, referrer and permissions policies.
 
+## Phase 7b (hardening)
+
+- SMS code (to the investor's own number) for: withdrawals, adding a payout method, changing email,
+  changing password, and — with `LOGIN_NEW_DEVICE_CODE=on` — logging in from a new browser. A browser
+  that passed a code is remembered for a year (`trusted_devices`, only a hash is stored). Keep the switch
+  off until real SMS (Twilio) is connected, then set it to `on` in Vercel.
+- Notifications are written by database triggers when something real happens: deposit credited/failed,
+  withdrawal approved/sent/rejected, identity verified/rejected, commission credited, new member, support
+  reply, and each investor's own result when a month is closed. The Profile alert switches apply.
+  `sms_sent_at`/`email_sent_at` are ready for an SMS/email sender.
+- Public policies: Staff → Policies. Factual drafts are provided; publishing is blocked while any
+  [BRACKET] is left. Until published, the home page says "Not yet published". Have them reviewed by a lawyer.
+
 ## Page delivery (mobile speed)
 
 `scripts/build-assets.mjs` runs before every build: it splits each template into a small HTML shell
@@ -140,6 +153,6 @@ The dashboard's server reads (login, profile, KYC, balances) run in one parallel
 ```bash
 npm run dev              # local server
 npm run gen-seed         # regenerate 0002 from data/records.json
-npm run test:db          # migrations twice + SQL tests for every phase (1–7) on a local Postgres
+npm run test:db          # migrations twice + SQL tests for every phase on a local Postgres
 npm test                 # unit tests (payment signatures, account builder)
 ```

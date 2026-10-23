@@ -1326,6 +1326,10 @@ const POLICIES=[
   {id:"privacy",t:"Privacy & your data",i:"shield-check"},
   {id:"complaints",t:"Complaints & disputes",i:"scale"}
 ];
+/* policies the company has published from its admin panel (plain text, escaped; blank line = new paragraph) */
+if(REAL.policies)for(const p of POLICIES){const x=REAL.policies[p.id];if(!x)continue;
+  const h=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+  p.ok=true;p.partial=false;p.body=()=>x.text.split(/\n\s*\n/).map(t=>`<p class="muted">${h(t.trim()).replace(/\n/g,"<br>")}</p>`).join("")+`<p class="note">Last updated ${h(x.at)}</p>`}
 $("trust").innerHTML=POLICIES.map((p,i)=>`<button type="button" class="tile tilt reveal" data-d="${i%3}" data-policy="${p.id}"><div class="glare"></div><span class="ti">${icon(p.i)}</span><b>${p.t}</b>${p.ok?(p.partial?`<span class="pill"><i></i>Partly published</span>`:`<span class="pill ok"><i></i>Published</span>`):`<span class="pill"><i></i>${NP}</span>`}</button>`).join("");
 $("flinks").innerHTML=POLICIES.map(p=>`<button type="button" data-policy="${p.id}">${p.t}</button>`).join("");
 

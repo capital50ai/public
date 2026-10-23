@@ -5,6 +5,7 @@ import { clientIp, fail, readJson } from "@/lib/request";
 import { accountFrozen, audit, ON_HOLD, withinLimit } from "@/lib/security";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { checkOwnCode, sendOwnCode } from "@/lib/otp";
 
 const BANKS = ["Meezan Bank", "HBL", "UBL", "MCB", "Allied Bank", "Bank Alfalah", "Bank Al Habib", "Faysal Bank", "Askari Bank",
   "Standard Chartered", "JS Bank", "Soneri Bank", "Habib Metro", "BankIslami", "Dubai Islamic Bank", "National Bank of Pakistan", "Other"];
@@ -42,6 +43,14 @@ export async function POST(req: Request) {
   const { data: dup } = await admin.from("payout_methods").select("user_id").eq("account_hash", hash).is("disabled_at", null);
   if (dup?.some((d) => d.user_id === user.id)) return fail("You've already added this account.", 409, "mErr1");
   if (dup?.length) return fail("This account is registered to another investor. Contact support.", 409, "mErr1");
+
+  // Everything checks out: confirm with an SMS code (first call sends it, second call carries it).
+  if (body.code == null) {
+    const r = await sendOwnCode(supabase, user, req);
+    return "error" in r ? fail(r.error, r.status) : Response.json({ otp: true, to: r.to });
+  }
+  const codeErr = await checkOwnCode(supabase, user, body.code);
+  if (codeErr) return fail(codeErr, 400);
 
   const { data: m, error } = await admin.from("payout_methods").insert({
     user_id: user.id, type, account_enc: encrypt(account), account_hint: accountHint(account), account_hash: hash,

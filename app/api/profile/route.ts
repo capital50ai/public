@@ -4,6 +4,7 @@ import { audit, withinLimit } from "@/lib/security";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { cleanFullName, normalizeEmail } from "@/lib/validate";
+import { checkOwnCode, sendOwnCode } from "@/lib/otp";
 
 // Edit personal details. The mobile number is the login and can't change here; the name locks once
 // identity verification is submitted (it must match the CNIC).
@@ -42,6 +43,15 @@ export async function POST(req: Request) {
     if (city !== (p.city ?? "")) update.city = city || null;
   }
   if (!Object.keys(update).length) return Response.json({ ok: true });
+  // A new email can be used to log in, so it needs an SMS code like other sensitive changes.
+  if (update.email) {
+    if (body.code == null) {
+      const r = await sendOwnCode(supabase, user, req);
+      return "error" in r ? fail(r.error, r.status) : Response.json({ otp: true, to: r.to });
+    }
+    const codeErr = await checkOwnCode(supabase, user, body.code);
+    if (codeErr) return fail(codeErr, 400);
+  }
   const { error } = await admin.from("profiles").update(update).eq("user_id", user.id);
   if (error) {
     console.error("profile update failed", error.message);

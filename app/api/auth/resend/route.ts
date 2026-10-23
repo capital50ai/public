@@ -15,11 +15,11 @@ export async function POST(req: Request) {
 
   const supabase = await createClient();
   const { error } =
-    body.flow === "reset"
+    body.flow === "reset" || body.flow === "login"
       ? await supabase.auth.signInWithOtp({ phone, options: { shouldCreateUser: false } })
       : await supabase.auth.resend({ type: "sms", phone });
   // An unknown number gets the same answer as a known one.
   if (error && error.status === 429) return fail(authMessage(error), 429);
-  if (error && body.flow !== "reset") return fail(authMessage(error));
+  if (error && body.flow === "signup") return fail(authMessage(error));
   return Response.json({ ok: true });
 }

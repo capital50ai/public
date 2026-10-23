@@ -4,6 +4,7 @@ import { clientIp, fail, readJson } from "@/lib/request";
 import { audit, withinLimit } from "@/lib/security";
 import { createClient } from "@/lib/supabase/server";
 import { normalizePkPhone } from "@/lib/validate";
+import { trustThisDevice } from "@/lib/devices";
 
 export async function POST(req: Request) {
   if (!isLive()) return Response.json({ preview: true });
@@ -19,10 +20,12 @@ export async function POST(req: Request) {
 
   await audit({
     actorId: data.user.id,
-    action: body.flow === "reset" ? "auth.reset_code_verified" : "auth.signup_verified",
+    action: body.flow === "reset" ? "auth.reset_code_verified" : body.flow === "login" ? "auth.login_new_device" : "auth.signup_verified",
     entity: "auth.users",
     entityId: data.user.id,
     ip: clientIp(req),
   });
+  // This browser has now proved it holds the phone.
+  await trustThisDevice(data.user.id, req.headers.get("user-agent"));
   return Response.json({ ok: true });
 }

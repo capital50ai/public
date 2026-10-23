@@ -972,7 +972,10 @@ const PAY=[["JC","JazzCash"],["EP","Easypaisa"],["BK","Bank transfer"],["₮","U
 /* live payouts: saved, checked and approved on the server */
 async function post(url,body,method="POST"){try{const r=await fetch(url,{method,headers:{"content-type":"application/json"},body:body?JSON.stringify(body):undefined});const j=await r.json().catch(()=>({}));return r.ok?{ok:true,...j}:{ok:false,error:j.error||"Something went wrong. Please try again.",field:j.field}}catch(e){return{ok:false,error:"No connection. Please try again."}}}
 async function saveMethod(m){const b=$("mSave");b.disabled=true;const j=await post("/api/payout-methods",m);b.disabled=false;
-  if(!j.ok){if(j.field&&$(j.field))$(j.field).textContent=j.error;else toast(j.error);return}ST.methods.push(j.method);close();renderMethods();toast("Saved — usable in 24 hours")}
+  if(!j.ok){if(j.field&&$(j.field))$(j.field).textContent=j.error;else toast(j.error);return}
+  if(j.otp){otpSheet(`Code sent to ${j.to}. Add payout method`,async code=>{const k=await post("/api/payout-methods",{...m,code});
+    if(!k.ok)return toast(k.error);ST.methods.push(k.method);renderMethods();toast("Saved — usable in 24 hours")});return}
+  ST.methods.push(j.method);close();renderMethods();toast("Saved — usable in 24 hours")}
 async function startWithdraw(amount,m){if(!m)return toast("Choose a payout method");const b=$("goM");b.disabled=true;const s=await post("/api/withdrawals/otp");b.disabled=false;if(!s.ok)return toast(s.error);
   otpSheet(`Withdraw ${rs(amount)} to ${mask(m.acct)}`,async code=>{toast("Checking…");const j=await post("/api/withdrawals",{amount,method_id:m.id,code});
     if(!j.ok)return toast(j.error);toast("Withdrawal requested. We'll review it shortly.");setTimeout(()=>location.reload(),1600)})}
@@ -1164,8 +1167,10 @@ function initProfile(){renderProfile();
   $("editP").onclick=()=>{const p=ST.profile;open(`<h3>Personal details</h3>${kycOK()?'<p class="label">Name and CNIC are locked after verification. Contact support to change them.</p>':""}<div class="kg one">
     ${kField("pN","Full name",kycOK()?"disabled":"",displayName()==="Investor"?"":displayName())}${kField("pPh","Mobile number",ME?"disabled":"inputmode='numeric' placeholder='03XXXXXXXXX'",p.phone)}${kField("pEm","Email","type='email'",p.email)}${kField("pCi","City","",p.city)}</div>${ME?'<p class="fine">Your mobile number is your login. To change it, open a support ticket.</p>':""}<button class="btn pri full" id="pSave" style="margin-top:12px">Save</button>`);
     $("pSave").onclick=()=>{let ok=true;ok=kErr("pPh",!$("pPh").value||mobileOK($("pPh").value)?"":"11 digits starting 03.")&&ok;ok=kErr("pEm",!$("pEm").value||/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test($("pEm").value)?"":"Enter a valid email.")&&ok;if(!ok)return;
-      if(ME){$("pSave").disabled=true;post("/api/profile",{name:$("pN").value.trim(),email:$("pEm").value.trim(),city:$("pCi").value.trim()}).then(r=>{$("pSave").disabled=false;
-        if(!r.ok){if(r.field&&$(r.field))kErr(r.field,r.error);else toast(r.error);return}if(!kycOK())p.name=$("pN").value.trim();p.email=$("pEm").value.trim();p.city=$("pCi").value.trim();close();renderProfile();toast("Details saved")});return}
+      if(ME){const v={name:$("pN").value.trim(),email:$("pEm").value.trim(),city:$("pCi").value.trim()},done=()=>{if(!kycOK())p.name=v.name;p.email=v.email;p.city=v.city;renderProfile();toast("Details saved")};
+        $("pSave").disabled=true;post("/api/profile",v).then(r=>{$("pSave").disabled=false;
+        if(!r.ok){if(r.field&&$(r.field))kErr(r.field,r.error);else toast(r.error);return}
+        if(r.otp){otpSheet(`Code sent to ${r.to}. Change email`,code=>post("/api/profile",{...v,code}).then(k=>k.ok?done():toast(k.error)));return}close();done()});return}
       if(!kycOK())p.name=$("pN").value.trim();p.phone=$("pPh").value.trim();p.email=$("pEm").value.trim();p.city=$("pCi").value.trim();save("profile");close();renderProfile();toast("Details saved")}};
   $("chPass").onclick=()=>{open(`<h3>Change password</h3><div class="kg one">${kField("cp0","Current password","type='password' autocomplete='current-password'")}${kField("cp1","New password","type='password' autocomplete='new-password'")}</div><div class="meter" id="cpm"><i></i><i></i><i></i><i></i></div><button class="btn pri full" id="cpGo" style="margin-top:12px">Update password</button>`);
     const st=p=>[p.length>=8,/[A-Z]/.test(p),/\d/.test(p),/[^A-Za-z0-9]/.test(p)].filter(Boolean).length;$("cp1").oninput=e=>$("cpm").dataset.s=e.target.value?st(e.target.value):0;
@@ -1213,13 +1218,14 @@ $$(".sw").forEach(s=>{const k="p_"+s.dataset.pref,sv=ME&&ME.prefs?ME.prefs[s.dat
     if(ME)post("/api/profile/prefs",{key:s.dataset.pref,value:v}).then(r=>{if(!r.ok){s.setAttribute("aria-checked",!v);store.set(k,String(!v));toast(r.error)}});if(s.dataset.pref==="hide")setHide(v);if(inited.profile)renderProfile();toast(v?"Turned on":"Turned off")}});
 const NOTES=(()=>{const last=months[months.length-1],k=recAt("kitchen",last),top=BOTS.map(b=>({b,r:recAt(b.id,last)})).sort((a,b)=>b.r-a.r)[0];
   const n=[{i:"calendar",t:`${ymL(last)} results published`,s:`Kitchen Money AI ${pct(k)} · best: ${top.b.name} ${pct(top.r)}`,h:"#strategies"}];
-  if(affByMonth[last])n.push({i:"gift",t:"Affiliate commission credited",s:`${rs2(affByMonth[last])} from your members' ${ymL(last)} fees`,h:"#affiliate"});
+  if(affByMonth[last]&&!(ME&&ME.notesLive))n.push({i:"gift",t:"Affiliate commission credited",s:`${rs2(affByMonth[last])} from your members' ${ymL(last)} fees`,h:"#affiliate"});
   if(!ME)n.push({i:"users",t:"New member joined with your link",s:"Member 9 · not invested yet",h:"#affiliate"});
-  else if(ME.aff&&ME.aff.members[0]&&ME.aff.members[0].ym===new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Karachi"}).slice(0,7))n.push({i:"users",t:"New member joined with your link",s:`${ME.aff.members[0].n} · ${ME.aff.members[0].id?"invested":"not invested yet"}`,h:"#affiliate"});
+  else if(!ME.notesLive&&ME.aff&&ME.aff.members[0]&&ME.aff.members[0].ym===new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Karachi"}).slice(0,7))n.push({i:"users",t:"New member joined with your link",s:`${ME.aff.members[0].n} · ${ME.aff.members[0].id?"invested":"not invested yet"}`,h:"#affiliate"});
   if(MTD)n.push({i:"activity",t:`${ymL(MTD.ym)} so far`,s:BOTS.filter(b=>MTD[b.id]!=null).slice(0,3).map(b=>`${b.name.replace(" AI","")} ${pct(MTD[b.id])}`).join(" · "),h:"#overview"});
-  if(!kycOK())n.push({i:"shield-alert",t:"Verify your identity",s:"Needed before withdrawals",h:"#kyc"});(ME&&ME.notices||[]).forEach(x=>n.push(x));return n})();
-let readN=store.get("read",false);$("bellDot").hidden=readN;
-$("bell").onclick=()=>{open(`<div class="dh"><h3>Notifications</h3><button class="ib" data-x aria-label="Close">${icon("x")}</button></div>`+NOTES.map((x,i)=>`<a class="nt ${!readN&&i<3?"unread":""}" href="${x.h}" data-x><span class="b">${icon(x.i)}</span><div><p>${x.t}</p><small>${x.s}</small></div></a>`).join(""),"drawer");readN=true;store.set("read",true);$("bellDot").hidden=true};
+  if(!kycOK())n.push({i:"shield-alert",t:"Verify your identity",s:"Needed before withdrawals",h:"#kyc"});if(ME&&ME.notesLive)return[...ME.notices,...n];(ME&&ME.notices||[]).forEach(x=>n.push(x));return n})();
+let readN=ME&&ME.notesLive?!NOTES.some(x=>x.u):store.get("read",false);$("bellDot").hidden=readN;
+$("bell").onclick=()=>{open(`<div class="dh"><h3>Notifications</h3><button class="ib" data-x aria-label="Close">${icon("x")}</button></div>`+NOTES.map((x,i)=>`<a class="nt ${(ME&&ME.notesLive?x.u:!readN&&i<3)?"unread":""}" href="${/^#[a-z]+$/.test(x.h)?x.h:"#overview"}" data-x><span class="b">${icon(x.i)}</span><div><p>${esc(x.t)}</p><small>${esc(x.s)}</small></div></a>`).join(""),"drawer");
+  if(ME&&ME.notesLive&&!readN)post("/api/notifications/read");readN=true;store.set("read",true);$("bellDot").hidden=true};
 
 /* pick up ?ref from links like dashboard.html?ref= (not used for self) and boot */
 const INIT={overview:initOverview,strategies:initStrategies,wallet:initWallet,affiliate:initAffiliate,kyc:initKyc,profile:initProfile,support:initSupport};

@@ -232,7 +232,7 @@ const $=id=>document.getElementById(id);
 $("otp").innerHTML=Array.from({length:6},(_,i)=>`<input inputmode="numeric" autocomplete="${i?"off":"one-time-code"}" maxlength="1" aria-label="Digit ${i+1}">`).join("");
 
 const panes=["pLogin","pForgot","pSignup","pOtp","pNewPass","pDone"];
-function show(id){panes.forEach(p=>$(p).hidden=p!==id);const m=id==="pSignup"||id==="pOtp"?"signup":"login";
+function show(id){panes.forEach(p=>$(p).hidden=p!==id);const m=id==="pSignup"||(id==="pOtp"&&flow==="signup")?"signup":"login";
   $("tabs").dataset.m=m;document.querySelectorAll("[data-tab]").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===m));
   const f=$(id).querySelector("input:not([type=checkbox])");if(f&&matchMedia("(pointer:fine)").matches)f.focus()}
 document.querySelectorAll("[data-tab]").forEach(b=>b.addEventListener("click",()=>{show(b.dataset.tab==="login"?"pLogin":"pSignup");history.replaceState(null,"","#"+b.dataset.tab)}));
@@ -277,6 +277,7 @@ $("fLogin").addEventListener("submit",async e=>{e.preventDefault();let ok=true;
   const res=await api("/api/auth/login",{by,phone:digits($("lPhone").value),email:$("lEmail").value.trim(),password:$("lPass").value});
   if(res.preview)await wait(700);busy(b,false);
   if(!res.ok){setErr(res.field==="email"?$("lEmail"):res.field==="phone"?$("lPhone"):$("lPass"),res.error);return}
+  if(res.otp){otpPhone=res.phone;flow="login";$("otpTo").textContent=res.to+" (new device)";show("pOtp");startResend();return}
   $("doneT").textContent="Welcome back.";show("pDone");await wait(900);location.href="dashboard.html"});
 
 $("fForgot").addEventListener("submit",async e=>{e.preventDefault();if(!setErr($("fPhone"),phoneOk($("fPhone").value)?"":"Enter a Pakistani mobile number."))return;
@@ -314,7 +315,8 @@ $("fOtp").addEventListener("submit",async e=>{e.preventDefault();if(code().lengt
   const res=await api("/api/auth/verify",{phone:otpPhone,code:code(),flow});if(res.preview)await wait(800);busy(b,false);
   if(!res.ok){$("otpErr").textContent=res.error;return}
   if(flow==="reset"&&!res.preview){show("pNewPass");return}
-  if(flow==="reset"){$("doneT").textContent="Code accepted.";$("doneP").textContent="In the live app you'd set a new password here. Opening the dashboard preview…"}
+  if(flow==="login"){$("doneT").textContent="Welcome back.";$("doneP").textContent="This device is now trusted. Opening your dashboard…"}
+  else if(flow==="reset"){$("doneT").textContent="Code accepted.";$("doneP").textContent="In the live app you'd set a new password here. Opening the dashboard preview…"}
   else{$("doneT").textContent="Account created.";$("doneP").textContent="Opening your dashboard preview…"}
   show("pDone");await wait(1100);location.href="dashboard.html"});
 </script>

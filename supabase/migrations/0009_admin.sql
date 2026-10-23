@@ -242,6 +242,13 @@ declare v_files text[];
 begin
   select coalesce(array_agg(storage_path), '{}') into v_files from kyc_documents where user_id = p_uid;
   perform set_config('c50.ledger_purge', 'on', true);
+  -- take this account's share out of the month totals so the books still reconcile
+  update month_closes mc
+     set total_profit = mc.total_profit - x.pl, total_fees = mc.total_fees - x.fee, holdings = greatest(0, mc.holdings - x.h)
+    from (select ref_id, coalesce(sum(amount) filter (where type in ('profit', 'loss')), 0) as pl,
+                 coalesce(-sum(amount) filter (where type = 'fee'), 0) as fee, count(distinct holding_id) as h
+            from ledger_entries where user_id = p_uid and ref_type = 'month_close' group by ref_id) x
+   where to_char(mc.ym, 'YYYY-MM') = x.ref_id;
   delete from affiliate_commissions where affiliate_id = p_uid or member_id = p_uid;
   delete from ledger_entries where user_id = p_uid;
   delete from withdrawals where user_id = p_uid;
@@ -292,6 +299,7 @@ begin
   delete from affiliate_commissions;
   delete from ledger_entries;
   delete from withdrawals;
+  delete from notifications where kind in ('deposit', 'withdrawal', 'affiliate', 'month');
   update deposits set status = case when status = 'paid' then 'refunded' else 'expired' end::deposit_status,
          status_note = 'Test money removed before launch'
    where status in ('paid', 'pending');

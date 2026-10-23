@@ -9,6 +9,7 @@ import { bankAccount } from "@/lib/payments/deposits";
 import { methodToClient } from "@/lib/payouts";
 import { affiliateCopy, type AffiliateRates } from "@/lib/affiliate";
 import { TICKET_COLS, ticketToClient } from "@/lib/tickets";
+import { publishedPolicies } from "@/lib/policies";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
     if (isLive()) {
       // Everything in one parallel round trip. RLS limits each read to the signed-in investor.
       const supabase = await createClient();
-      const [{ data: { user } }, profile, kyc, bank, holdings, entries, closes, pending, methods, withdrawals, aff, tickets, nominee] = await Promise.all([
+      const [{ data: { user } }, profile, kyc, bank, holdings, entries, closes, pending, methods, withdrawals, aff, tickets, nominee, notes] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from("profiles").select("full_name, phone, email, city, referral_code, created_at, prefs, leaderboard_opt_in").maybeSingle(),
         kycState(supabase).catch((e: Error) => e),
@@ -62,6 +63,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
         supabase.rpc("my_affiliate_summary"),
         supabase.from("tickets").select(TICKET_COLS).order("created_at", { ascending: false }).limit(20),
         supabase.rpc("my_nominee"),
+        supabase.from("notifications").select("kind, icon, title, body, link, created_at, read_at").order("created_at", { ascending: false }).limit(30),
       ]);
       if (!user) return Response.redirect(new URL("/auth.html", req.url), 303);
       const p = profile.data;
@@ -96,7 +98,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
       };
 
       // Affiliate figures, tickets and nominee are optional: if they can't load, the rest of the dashboard still works.
-      for (const [what, r] of [["affiliate summary", aff], ["tickets", tickets], ["nominee", nominee]] as const)
+      for (const [what, r] of [["affiliate summary", aff], ["tickets", tickets], ["nominee", nominee], ["notifications", notes]] as const)
         if (r.error) console.error(`dashboard: ${what} failed`, r.error.message);
       const failed = holdings.error || entries.error || closes.error || pending.error || methods.error || withdrawals.error;
       if (failed) {
@@ -114,8 +116,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
         .filter((w) => w.status === "rejected" && Date.parse(w.updated_at) > Date.now() - 30 * 864e5)
         .map((w) => ({ i: "x", t: "Withdrawal not approved", s: `Rs ${Number(w.amount).toLocaleString("en-US")}: ${w.reason ?? ""}`, h: "#wallet" }));
       me.tickets = (tickets.data ?? []).map((t) => ticketToClient(t as Parameters<typeof ticketToClient>[0]));
-      for (const t of (tickets.data ?? []).filter((t) => t.status === "answered"))
-        (me.notices as object[]).push({ i: "mail", t: "Support replied", s: `#${t.ref} · ${t.subject}`, h: "#support" });
+      if (notes.data) {
+        // Real events, written by the database when they happen. The alert switches on Profile apply.
+        const prefs = p.prefs as Record<string, unknown>;
+        me.notesLive = true;
+        me.notices = notes.data
+          .filter((n) => !(n.kind === "affiliate" && prefs.affal === false) && !(n.kind === "month" && prefs.alerts === false))
+          .map((n) => ({ i: n.icon, t: n.title, s: n.body, h: n.link, u: !n.read_at }));
+      } else {
+        for (const t of (tickets.data ?? []).filter((t) => t.status === "answered"))
+          (me.notices as object[]).push({ i: "mail", t: "Support replied", s: `#${t.ref} · ${t.subject}`, h: "#support" });
+      }
       for (const w of open) {
         const [y, m, day] = new Date(w.created_at).toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" }).split("-");
         account.events.unshift({ t: "wd", ym: `${y}-${m}`, day: Number(day), id: "", amt: -Number(w.amount) });
@@ -137,7 +148,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
     return new Response(html, { headers: { ...HTML, "cache-control": "private, no-store" } });
   }
 
-  let html = await render(name, { __C50_REAL__: real });
+  // The home page also gets the policy texts the owner has published.
+  const pageReal = name === "index" ? scriptJson({ ...realData, policies: await publishedPolicies() }) : real;
+  let html = await render(name, { __C50_REAL__: pageReal });
   if (name === "auth" && isLive()) html = html.split(PREVIEW_NOTE).join(liveNote());
   return new Response(html, {
     headers: { ...HTML, "cache-control": "public, max-age=0, s-maxage=300, stale-while-revalidate=86400" },

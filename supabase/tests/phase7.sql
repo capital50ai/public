@@ -131,16 +131,23 @@ insert into public.deposits (id, user_id, strategy_id, amount, method, reference
 select public.credit_deposit('00000000-0000-0000-0000-00000000de92', null, 'test', 'D92');
 select public.open_ticket('00000000-0000-0000-0000-0000000000d9', 'Other', 'Demo ticket', 'Hello');
 insert into public.nominees (user_id, full_name, relation, cnic_enc, cnic_hint) values ('00000000-0000-0000-0000-0000000000d9', 'Demo Nominee', 'Spouse', 'x', 'x');
-do $$ declare j jsonb; begin
+-- both have a closed month, so removing the demo must also take its share out of the month totals
+insert into public.holdings (user_id, strategy_id) select u, id from public.strategies, unnest(array['00000000-0000-0000-0000-0000000000d9', '00000000-0000-0000-0000-0000000000d2']::uuid[]) u
+  where slug = 'crypto';
+insert into public.ledger_entries (user_id, holding_id, type, amount, ym, idempotency_key)
+  select h.user_id, h.id, 'deposit', 10000, '2026-09-01', 't7:sep:' || h.user_id from public.holdings h join public.strategies s on s.id = h.strategy_id where s.slug = 'crypto';
+select public.close_month('2026-09-01');
+do $$ declare j jsonb; v_before numeric := public.ledger_balance('00000000-0000-0000-0000-0000000000d2'); begin
   perform public.purge_demo_data();
   assert not exists (select 1 from auth.users where phone = '923001234567'), 'demo still there';
   assert not exists (select 1 from public.kyc_applications where user_id = '00000000-0000-0000-0000-0000000000d9'), 'demo kyc left';
   assert (select referred_by from public.profiles where user_id = '00000000-0000-0000-0000-0000000000d2') is null, 'member unlinked';
-  assert public.ledger_balance('00000000-0000-0000-0000-0000000000d2') = 20000, 'other investor untouched';
+  assert public.ledger_balance('00000000-0000-0000-0000-0000000000d2') = v_before, 'other investor untouched';
   assert exists (select 1 from public.audit_log where action = 'demo.purge'), 'purge audited';
+  assert (public.run_reconciliation('test')->>'ok')::boolean, 'books balance after demo purge: ' || (public.run_reconciliation('test'))::text;
   perform pg_temp.fails($q$select public.prepare_for_launch('00000000-0000-0000-0000-0000000000f1', 'yes')$q$, 'Type RESET TEST MONEY%');
   j := public.prepare_for_launch('00000000-0000-0000-0000-0000000000f1', 'RESET TEST MONEY');
-  assert (j->>'ledger_rows')::int = 1, 'reset counted ' || j::text;
+  assert (j->>'ledger_rows')::int >= 3, 'reset counted ' || j::text;
   assert public.ledger_balance('00000000-0000-0000-0000-0000000000d2') = 0, 'test money cleared';
   assert (select status from public.deposits where reference = 'C50-D92') = 'refunded', 'deposit marked';
   assert exists (select 1 from public.profiles where user_id = '00000000-0000-0000-0000-0000000000d2'), 'investor kept';
