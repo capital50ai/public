@@ -86,6 +86,7 @@ declare
 begin
   perform pg_advisory_xact_lock(hashtext('c50.wd.' || p_user));  -- one money action per investor at a time
   if not kyc_verified(p_user) then raise exception 'Verify your identity (CNIC) before withdrawing'; end if;
+  if account_frozen(p_user) then raise exception 'Your account is on hold. Please contact support.'; end if;
   if p_otp_at is null or p_otp_at < now() - interval '10 minutes' then raise exception 'Confirm with the code sent to your phone'; end if;
   select * into m from payout_methods where id = p_method and user_id = p_user and disabled_at is null;
   if not found then raise exception 'Choose one of your payout methods'; end if;
@@ -144,6 +145,7 @@ begin
     raise exception 'A second, different staff member must approve this withdrawal';
   end if;
   if not kyc_verified(w.user_id) then raise exception 'Investor is no longer KYC verified'; end if;
+  if account_frozen(w.user_id) then raise exception 'Investor account is frozen'; end if;
   if ledger_balance(w.user_id) < (select sum(amount) from withdrawals where user_id = w.user_id and status in ('requested', 'approved')) then
     raise exception 'Balance no longer covers this withdrawal';
   end if;
@@ -188,6 +190,9 @@ declare
   v_ym    date := date_trunc('month', now() at time zone 'Asia/Karachi')::date;
   v_prev  date := (date_trunc('month', now() at time zone 'Asia/Karachi') - interval '1 month')::date;
   v_total numeric;
+  v_aff   numeric;
+  v_need  numeric;
+  v_hold  numeric;
   v_left  numeric;
   v_share numeric;
   h       record;
@@ -204,6 +209,7 @@ begin
   end if;
   perform pg_advisory_xact_lock(hashtext('c50.wd.' || w.user_id));
   if not kyc_verified(w.user_id) then raise exception 'Investor is no longer KYC verified'; end if;
+  if account_frozen(w.user_id) then raise exception 'Investor account is frozen'; end if;
   if not exists (select 1 from payout_methods where id = w.payout_method_id and disabled_at is null and title_verified) then
     raise exception 'The payout method was removed or is not verified';
   end if;
@@ -212,18 +218,30 @@ begin
     raise exception 'Close % before paying withdrawals, so its result is booked first', to_char(v_prev, 'YYYY-MM');
   end if;
 
-  -- holdings and their current values; the largest goes last and takes the rounding remainder
+  -- affiliate earnings (no holding) are paid out first, the rest from holdings in proportion to value;
+  -- the largest holding goes last and takes the rounding remainder
+  select coalesce(sum(amount), 0) into v_aff from ledger_entries where user_id = w.user_id and holding_id is null;
   select coalesce(sum(value), 0), count(*) into v_total, v_n
     from (select sum(amount) as value from ledger_entries
            where user_id = w.user_id and holding_id is not null group by holding_id having sum(amount) > 0) x;
-  if v_total < w.amount then raise exception 'Balance no longer covers this withdrawal'; end if;
+  if v_total + greatest(v_aff, 0) < w.amount then raise exception 'Balance no longer covers this withdrawal'; end if;
 
   v_left := w.amount;
+  if v_aff > 0 then
+    v_share := least(v_aff, w.amount);
+    insert into ledger_entries (user_id, type, amount, ym, ref_type, ref_id, idempotency_key, meta)
+    values (w.user_id, 'affiliate_payout', -v_share, v_ym, 'withdrawal', w.id::text, format('wd:%s:aff', w.id),
+            jsonb_build_object('source', 'withdrawal', 'tx_ref', v_ref, 'day', extract(day from now() at time zone 'Asia/Karachi')::int));
+    v_left := v_left - v_share;
+  end if;
+  v_need := v_left;   -- what the holdings still have to cover
+  v_hold := v_total;
+
   for h in select holding_id, sum(amount) as value from ledger_entries
             where user_id = w.user_id and holding_id is not null
             group by holding_id having sum(amount) > 0 order by 2, 1 loop
     v_i := v_i + 1;
-    v_share := case when v_i = v_n then v_left else least(h.value, round(w.amount * h.value / v_total, 2)) end;
+    v_share := case when v_i = v_n then v_left else least(h.value, round(v_need * h.value / v_hold, 2)) end;
     if v_share > 0 then
       insert into ledger_entries (user_id, holding_id, type, amount, ym, ref_type, ref_id, idempotency_key, meta)
       values (w.user_id, h.holding_id, 'withdrawal', -v_share, v_ym, 'withdrawal', w.id::text,

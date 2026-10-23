@@ -109,6 +109,7 @@ begin
   values (p_actor, case when p_actor is null then 'system' else 'staff' end, 'deposit.credit', 'deposits', d.id::text,
           jsonb_build_object('amount', d.amount, 'method', d.method, 'source', p_source,
                              'provider_ref', p_provider_ref, 'effective_ym', to_char(v_ym, 'YYYY-MM')));
+  perform affiliate_on_deposit(d.id, v_ym);  -- 0008_affiliates (only when a deposit rate is set)
   return jsonb_build_object('status', 'paid', 'already', false, 'effective_ym', to_char(v_ym, 'YYYY-MM'));
 end $$;
 

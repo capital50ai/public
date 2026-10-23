@@ -103,7 +103,7 @@ create trigger ledger_open_month before insert on public.ledger_entries
 --   profit      = round(value_start × r / 100, 2)          (negative = loss)
 --   fee         = round(max(0, profit) × 2.5%, 2)
 -- Writes profit|loss and fee entries keyed close:{ym}:{holding}:{type}. Re-running is a no-op.
--- Affiliate commissions are added in Phase 6.
+-- Affiliate commissions: affiliate_on_fee() per fee, affiliate_settle_deposits() at the end (0008).
 create or replace function public.close_month(p_ym date, p_actor uuid default null)
 returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -180,10 +180,14 @@ begin
       on conflict (idempotency_key) do nothing;
     end if;
 
+    if v_fee > 0 then perform affiliate_on_fee(h.user_id, h.id, p_ym, v_fee); end if;  -- 0008_affiliates
+
     v_n  := v_n + 1;
     v_tp := v_tp + v_profit;
     v_tf := v_tf + v_fee;
   end loop;
+
+  perform affiliate_settle_deposits(p_ym);  -- 0008_affiliates: deposit commissions whose first month closed
 
   insert into month_closes (ym, closed_by, holdings, total_profit, total_fees)
   values (p_ym, p_actor, v_n, v_tp, v_tf);
