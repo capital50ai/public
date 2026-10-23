@@ -276,6 +276,101 @@ language sql stable security definer set search_path = public as $$
    order by sum(c.commission_amount) desc, min(c.credited_at)
 $$;
 
+-- Everything the affiliate hub shows, for one affiliate. Members appear as first name + last initial with
+-- only what they earned the affiliate; never a member's balance or deposits.
+-- "pending" = deposit commissions not yet credited + an estimate of this month's fee share from the
+-- month-to-date returns (credited for real only when the month closes).
+create or replace function public.affiliate_summary(p_user uuid) returns jsonb
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_pid     uuid;
+  v_code    text;
+  v_opt     boolean;
+  v_blocked boolean;
+  v_last    date := (select max(ym) from month_closes);
+  v_mtd     date := (select max(ym) from strategy_returns where status = 'mtd');
+  v_fee     numeric := setting_num('affiliate_fee_share_rate', 0.15);
+  v_dep     numeric := setting_num('affiliate_deposit_rate', 0);
+  v_members jsonb;
+  v_by      jsonb;
+  v_total   numeric;
+  v_wd      numeric;
+begin
+  select id, referral_code, leaderboard_opt_in, affiliate_blocked_at is not null
+    into v_pid, v_code, v_opt, v_blocked from profiles where user_id = p_user;
+  if v_pid is null then return null; end if;
+  if v_last is not null and v_mtd <= v_last then v_mtd := null; end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object('n', m.name, 'ym', m.joined, 'id', m.slug, 'com', m.com, 'pending', m.pending)
+                            order by m.created_at desc), '[]'::jsonb)
+    into v_members
+    from (
+      select p.created_at,
+             to_char(p.created_at at time zone 'Asia/Karachi', 'YYYY-MM') as joined,
+             coalesce(nullif(initcap(split_part(trim(p.full_name), ' ', 1)), ''), 'Member')
+               || coalesce(' ' || upper(substring(trim(p.full_name) from '\s(\S)\S*$')) || '.', '') as name,
+             (select s.slug from holdings h join strategies s on s.id = h.strategy_id
+               where h.user_id = p.user_id and exists (select 1 from ledger_entries l where l.holding_id = h.id)
+               order by h.opened_at limit 1) as slug,
+             coalesce((select sum(c.commission_amount) from affiliate_commissions c
+                        where c.affiliate_id = p_user and c.member_id = p.user_id and c.status = 'credited'), 0) as com,
+             round(coalesce((select sum(c.commission_amount) from affiliate_commissions c
+                              where c.affiliate_id = p_user and c.member_id = p.user_id and c.status = 'pending'), 0)
+                 + case when v_blocked or v_mtd is null then 0 else coalesce((
+                     select sum(greatest(0, hv.val * r.return_pct / 100)) * 0.025 * v_fee
+                       from (select h.strategy_id, sum(l.amount) as val
+                               from holdings h join ledger_entries l on l.holding_id = h.id
+                              where h.user_id = p.user_id and l.ym <= v_mtd group by h.strategy_id) hv
+                       join strategy_returns r on r.strategy_id = hv.strategy_id and r.ym = v_mtd and r.status = 'mtd'), 0) end,
+                   2) as pending
+        from profiles p where p.referred_by = v_pid
+    ) m;
+
+  select coalesce(jsonb_object_agg(ym, amt), '{}'::jsonb), coalesce(sum(amt), 0) into v_by, v_total
+    from (select to_char(ym, 'YYYY-MM') as ym, sum(commission_amount) as amt
+            from affiliate_commissions where affiliate_id = p_user and status = 'credited' group by 1) x;
+  -- affiliate money lives outside the holdings: commissions, their payouts and any voids
+  select greatest(0, coalesce(sum(amount), 0)) into v_wd from ledger_entries where user_id = p_user and holding_id is null;
+
+  return jsonb_build_object(
+    'rates', jsonb_build_object('fee', v_fee, 'dep', v_dep),
+    'members', v_members,
+    'byMonth', v_by,
+    'total', v_total,
+    'pending', (select coalesce(sum((x->>'pending')::numeric), 0) from jsonb_array_elements(v_members) x),
+    'withdrawable', v_wd,
+    'optIn', v_opt,
+    'blocked', v_blocked,
+    'mtdYm', to_char(v_mtd, 'YYYY-MM'),
+    'lb', jsonb_build_object(
+      'month', affiliate_board(p_user, v_code, coalesce(v_last, 'infinity'::date)),
+      'q',     affiliate_board(p_user, v_code, coalesce((v_last - interval '2 months')::date, 'infinity'::date)),
+      'all',   affiliate_board(p_user, v_code, '2000-01-01')));
+end $$;
+
+-- Top 10 for a period, plus the caller's own row wherever they rank.
+create or replace function public.affiliate_board(p_user uuid, p_code text, p_from date) returns jsonb
+language sql stable security definer set search_path = public as $$
+  with r as (
+    select row_number() over (order by commission desc, first_credit) as rank, * from affiliate_leaderboard(p_from)
+  ), top as (
+    select jsonb_build_object('rank', rank, 'name', case when user_id = p_user then 'You · ' || p_code else display_name end,
+                              'members', members, 'com', commission, 'you', user_id = p_user) as row, rank
+      from r where rank <= 10 or user_id = p_user
+  )
+  select coalesce((select jsonb_agg(row order by rank) from top), '[]'::jsonb)
+      || case when exists (select 1 from r where user_id = p_user) then '[]'::jsonb
+              else jsonb_build_array(jsonb_build_object('rank', (select count(*) + 1 from r), 'name', 'You · ' || p_code,
+                     'members', (select count(*) from profiles m join profiles a on a.id = m.referred_by where a.user_id = p_user),
+                     'com', 0, 'you', true)) end
+$$;
+
+-- The signed-in investor's own summary (callable from the browser session; reads only their data).
+create or replace function public.my_affiliate_summary() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select affiliate_summary(auth.uid())
+$$;
+
 -- ---------------------------------------------------------------------- RLS
 alter table public.affiliate_codes enable row level security;
 alter table public.affiliate_commissions enable row level security;
@@ -288,8 +383,11 @@ revoke insert, update, delete on public.affiliate_codes, public.affiliate_commis
 do $$ declare f text; begin
   foreach f in array array['setting_num(text,numeric)', 'set_referral_code(uuid,text)', 'commission_affiliate(uuid)', 'same_person(uuid,uuid)',
     'credit_commission(uuid)', 'affiliate_on_fee(uuid,uuid,date,numeric)', 'affiliate_on_deposit(uuid,date)', 'affiliate_settle_deposits(date)',
-    'void_commission(uuid,uuid,text)', 'set_account_flag(uuid,uuid,text,boolean,text)', 'account_frozen(uuid)', 'affiliate_leaderboard(date)'] loop
+    'void_commission(uuid,uuid,text)', 'set_account_flag(uuid,uuid,text,boolean,text)', 'account_frozen(uuid)', 'affiliate_leaderboard(date)',
+    'affiliate_summary(uuid)', 'affiliate_board(uuid,text,date)'] loop
     execute format('revoke execute on function public.%s from public, anon, authenticated', f);
     execute format('grant execute on function public.%s to service_role', f);
   end loop;
 end $$;
+revoke execute on function public.my_affiliate_summary() from public, anon;
+grant execute on function public.my_affiliate_summary() to authenticated, service_role;

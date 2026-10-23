@@ -662,6 +662,7 @@ a.act{text-decoration:none;color:var(--muted)}
           <div class="tog"><div><p>Reinvest monthly profit</p><small>Profit stays invested and compounds.</small></div><button class="sw" role="switch" aria-checked="true" data-pref="reinvest" aria-label="Reinvest"></button></div>
           <div class="tog"><div><p>Monthly result alerts</p><small>SMS + app when a month is published.</small></div><button class="sw" role="switch" aria-checked="true" data-pref="alerts" aria-label="Result alerts"></button></div>
           <div class="tog"><div><p>Affiliate alerts</p><small>When a member joins or commission is credited.</small></div><button class="sw" role="switch" aria-checked="true" data-pref="affal" aria-label="Affiliate alerts"></button></div>
+          <div class="tog"><div><p>Show my name on the leaderboard</p><small>First name and last initial. Off: shown as Affiliate #code.</small></div><button class="sw" role="switch" aria-checked="false" data-pref="lb" aria-label="Show my name on the leaderboard"></button></div>
           <div class="tog"><div><p>Hide balances on open</p><small>Tap the eye to reveal.</small></div><button class="sw" role="switch" aria-checked="false" data-pref="hide" aria-label="Hide balances"></button></div>
         </section>
         <section class="card s6 rv">
@@ -734,7 +735,9 @@ const RED=matchMedia("(prefers-reduced-motion:reduce)").matches;
 
 /* ---------- business constants (mirror these server-side) ---------- */
 const FEE=.025;            // platform fee: 2.5% of a month's positive profit
-const AFF=.15;             // affiliate share: 15% of that fee
+const AFF=ME&&ME.aff?+ME.aff.rates.fee:.15;   // affiliate share of that fee (owner setting; 15% default)
+const AFF_DEP=ME&&ME.aff?+ME.aff.rates.dep:0; // optional one-off share of each member deposit, paid by Capital 50
+const pctT=x=>+(x*100).toFixed(2)+"%";
 const MIN_DEP=5000,MIN_WD=1000,MIN_AFF_PAYOUT=1000,ATTR_DAYS=30;
 
 const BOTS=[{id:"kitchen",name:"Kitchen Money AI",kind:"All in one",col:"#F27BA8"},{id:"gold",name:"Gold AI",kind:"Gold",col:"#F6D27A"},{id:"crypto",name:"Crypto AI",kind:"Crypto",col:"#F7A93B"},{id:"ecom",name:"Ecom AI",kind:"E-commerce",col:"#3FD8E8"},{id:"sat",name:"Satellite AI",kind:"Satellite",col:"#7AA8FF"},{id:"prompt",name:"Prompts AI",kind:"AI prompts",col:"#4BE3A3"}];
@@ -779,8 +782,10 @@ const MEMBERS=(ME?[]:[["Member 1","2026-07","kitchen",50000],["Member 2","2026-0
   .map(([n,ym,id,amt],i)=>{const m={n,ym,id,amt,val:amt,fee:0,com:0,pending:0,byMonth:{}};if(!id)return m;
     for(const mm of months.slice(months.indexOf(ym))){const r=recAt(id,mm);if(r==null)continue;const p=m.val*r/100,f=Math.max(0,p)*FEE;m.val+=p-f;m.fee+=f;m.com+=f*AFF;m.byMonth[mm]=f*AFF}
     m.pending=MTD&&MTD[id]!=null?Math.max(0,m.val*MTD[id]/100)*FEE*AFF:0;return m});
-const affByMonth={};MEMBERS.forEach(m=>Object.entries(m.byMonth).forEach(([ym,c])=>affByMonth[ym]=(affByMonth[ym]||0)+c));
-const affTotal=MEMBERS.reduce((a,m)=>a+m.com,0),affPending=MEMBERS.reduce((a,m)=>a+m.pending,0);
+if(ME&&ME.aff)ME.aff.members.forEach(m=>MEMBERS.push({n:m.n,ym:m.ym,id:m.id,amt:0,com:+m.com,pending:+m.pending,byMonth:{}}));
+const affByMonth={};if(ME&&ME.aff)Object.entries(ME.aff.byMonth).forEach(([ym,c])=>affByMonth[ym]=+c);else MEMBERS.forEach(m=>Object.entries(m.byMonth).forEach(([ym,c])=>affByMonth[ym]=(affByMonth[ym]||0)+c));
+const affTotal=ME&&ME.aff?+ME.aff.total:MEMBERS.reduce((a,m)=>a+m.com,0),affPending=ME&&ME.aff?+ME.aff.pending:MEMBERS.reduce((a,m)=>a+m.pending,0);
+const affWd=ME&&ME.aff?+ME.aff.withdrawable:affTotal;
 const affEvents=Object.entries(affByMonth).map(([ym,c])=>({t:"af",ym,day:28,id:null,amt:c}));
 const events=[...ACC.events,...affEvents].sort((a,b)=>(b.ym+String(b.day).padStart(2,"0")).localeCompare(a.ym+String(a.day).padStart(2,"0")));
 
@@ -822,7 +827,7 @@ function spk(vals,col,bars){const W=100,Hh=26,mx=Math.max(...vals.map(Math.abs),
   return`<svg viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="none" aria-hidden="true"><path d="${vals.map((v,i)=>(i?"L":"M")+X(i).toFixed(1)+" "+Y(v).toFixed(1)).join(" ")}" fill="none" stroke="${col}" stroke-width="1.6" vector-effect="non-scaling-stroke"/></svg>`}
 const kpiCard=k=>`<div class="card kpi"><span class="label">${icon(k.i)}${k.l}</span><b>${k.v}</b><small>${k.s}</small>${k.sp||""}</div>`;
 const evMeta={pd:["clock","in","Deposit · awaiting confirmation"],out:["arrow-up-right","fe","Withdrawal"],wd:["clock","fe","Withdrawal · in review"],in:["arrow-down-left","in","Deposit"],pr:["trending-up","pr","Monthly profit"],ls:["trending-down","ls","Monthly loss"],fe:["percent","fe","Fee · 2.5% of profit"],af:["gift","af","Affiliate commission"]};
-const evRow=e=>{const[ic,c,t]=evMeta[e.t];return`<div class="ev"><span class="b ${c}">${icon(ic)}</span><div><p>${t}</p><small>${e.id?B[e.id].name+" · ":""}${e.day} ${ymL(e.ym)}${e.r!=null?" · "+pct(e.r):""}${e.t==="af"?" · 15% of members' fees":""}</small></div><span class="a m ${e.amt<0?"neg":e.t==="in"?"":"pos"}">${e.amt>=0?"+":""}${Math.abs(e.amt)<100?rs2(e.amt):rs(e.amt)}</span></div>`};
+const evRow=e=>{const[ic,c,t]=evMeta[e.t];return`<div class="ev"><span class="b ${c}">${icon(ic)}</span><div><p>${t}</p><small>${e.id?B[e.id].name+" · ":""}${e.day} ${ymL(e.ym)}${e.r!=null?" · "+pct(e.r):""}${e.t==="af"?" · "+pctT(AFF)+" of members' fees"+(AFF_DEP?" + deposits":""):""}</small></div><span class="a m ${e.amt<0?"neg":e.t==="in"?"":"pos"}">${e.amt>=0?"+":""}${Math.abs(e.amt)<100?rs2(e.amt):rs(e.amt)}</span></div>`};
 
 const C={mode:"acct",range:0,sel:new Set(H.map(h=>h.id))};
 function series(){
@@ -1012,7 +1017,7 @@ document.addEventListener("click",e=>{const b=e.target.closest("[data-sheet]");i
    ===================================================================== */
 function refCode(){if(ST.code)return ST.code;const base=(displayName().split(" ")[0]||"C50").toUpperCase().replace(/[^A-Z]/g,"").slice(0,6)||"C50";
   ST.code=base+String(Math.abs([...displayName()].reduce((a,c)=>a*31+c.charCodeAt(0),7))%90+10);save("code");return ST.code}
-const refLink=()=>{try{return new URL("auth.html?ref="+refCode()+"#signup",location.href.startsWith("http")?location.href:"https://capital50.ai/").href}catch(e){return"https://capital50.ai/auth.html?ref="+refCode()+"#signup"}};
+const refLink=()=>{if(ME)return location.origin+"/r/"+refCode();try{return new URL("auth.html?ref="+refCode()+"#signup",location.href.startsWith("http")?location.href:"https://capital50.ai/").href}catch(e){return"https://capital50.ai/auth.html?ref="+refCode()+"#signup"}};
 const copy=(t,msg)=>{(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>toast(msg||"Copied"),()=>{open(`<h3>Copy this</h3><input class="inp" value="${esc(t)}" readonly onclick="this.select()">`)})};
 document.addEventListener("click",e=>{const b=e.target.closest("[data-copy]");if(b)copy(b.dataset.copy==="link"?refLink():refCode(),b.dataset.copy==="link"?"Invite link copied":"Code copied")});
 const shareText=()=>`I'm using Capital 50 AI — six AI strategies with every monthly result published. Have a look and sign up with my link: ${refLink()}`;
@@ -1020,7 +1025,7 @@ function setShare(){$("refLink").textContent=refLink().replace(/^https?:\/\//,""
   $("shWa").href="https://wa.me/?text="+t;$("shFb").href="https://www.facebook.com/sharer/sharer.php?u="+u;$("shX").href="https://twitter.com/intent/tweet?text="+t;$("codeMini")&&($("codeMini").textContent=refCode())}
 /* leaderboard: preview placeholders + your computed row. Production: computed from commissions table only. */
 const LB_PREVIEW=[["A7F2",34],["K91C",27],["Q3D8",22],["M4X1",18],["Z0P6",15],["R8T3",12],["H2W9",10],["B5N4",8],["E6J7",6],["U1L5",5]];
-function lbRows(period){const mult=period==="month"?1:period==="q"?2.7:4.5;const mo=months[months.length-1];
+function lbRows(period){if(ME)return ME.aff?ME.aff.lb[period].map(r=>({...r,com:+r.com})):[{rank:1,name:"You · "+refCode(),members:0,com:0,you:true}];const mult=period==="month"?1:period==="q"?2.7:4.5;const mo=months[months.length-1];
   const avgCom=m=>m*25000*.28*FEE*AFF; // members × Rs 25,000 avg × 28% avg month × fee × share — placeholder only
   const rows=LB_PREVIEW.map(([id,m])=>({name:"Affiliate #"+id,members:m,com:avgCom(m)*mult,you:false}));
   const mine=period==="month"?(affByMonth[mo]||0):period==="q"?months.slice(-3).reduce((a,ym)=>a+(affByMonth[ym]||0),0):affTotal;
@@ -1043,26 +1048,28 @@ function inviteCard(){const c=document.createElement("canvas");c.width=1080;c.he
   if(IMG.network){const im=new Image();im.onload=()=>{x.drawImage(im,240,200,600,600);draw()};im.onerror=draw;im.src=IMG.network}else draw()}
 function editCodeSheet(){open(`<h3>Custom invite code</h3><p class="label">4–12 letters or numbers. Your old links keep working.</p><div class="fi" style="margin:12px 0 4px"><input id="cIn" value="${esc(refCode())}" maxlength="12" style="text-transform:uppercase"></div><span class="err" id="cErr"></span><button class="btn pri full" id="cSave" style="margin-top:12px">Save code</button>`);
   $("cSave").onclick=()=>{const v=$("cIn").value.trim().toUpperCase();if(!/^[A-Z0-9]{4,12}$/.test(v)){$("cErr").textContent="Use 4–12 letters or numbers, no spaces.";return}
-    if(["ADMIN","CAPITAL50","SUPPORT","C50AI"].includes(v)){$("cErr").textContent="That code is reserved.";return}ST.code=v;save("code");close();setShare();toast("Invite code updated")}}
+    if(["ADMIN","CAPITAL50","SUPPORT","C50AI"].includes(v)){$("cErr").textContent="That code is reserved.";return}
+    if(ME){const b=$("cSave");b.disabled=true;post("/api/affiliate/code",{code:v}).then(r=>{b.disabled=false;if(!r.ok){$("cErr").textContent=r.error;return}ST.code=r.code;close();setShare();renderLB("month");toast("Invite code updated. Old links still work.")});return}
+    ST.code=v;save("code");close();setShare();toast("Invite code updated")}}
 function initAffiliate(){setShare();
   const mo=months[months.length-1],active=MEMBERS.filter(m=>m.id).length;
   $("affKpis").innerHTML=[
     {l:"Total earned",i:"gift",v:`<span class="pos m">${rs2(affTotal)}</span>`,s:"credited commissions",sp:spk(Object.values(affByMonth),"#B98CFF",true)},
     {l:ymL(MTD?MTD.ym:mo)+" (pending)",i:"clock",v:`<span class="m">${rs2(affPending)}</span>`,s:"estimate · credited at month close"},
     {l:"Members invited",i:"users",v:`${MEMBERS.length}`,s:`${active} invested · ${MEMBERS.length-active} not yet`},
-    {l:"Withdrawable",i:"banknote",v:`<span class="m">${rs2(affTotal)}</span>`,s:affTotal>=MIN_AFF_PAYOUT?"ready to withdraw":`min ${rs(MIN_AFF_PAYOUT)} to withdraw`}].map(kpiCard).join("");
+    {l:"Withdrawable",i:"banknote",v:`<span class="m">${rs2(affWd)}</span>`,s:affWd>=MIN_AFF_PAYOUT?"ready to withdraw":`min ${rs(MIN_AFF_PAYOUT)} to withdraw`}].map(kpiCard).join("");
   const am=months.filter(ym=>affByMonth[ym]),mx=Math.max(...am.map(ym=>affByMonth[ym]),1);
   $("affBars").innerHTML=am.map(ym=>`<div class="bar"><b class="num m">${rs2(affByMonth[ym])}</b><i style="height:${(affByMonth[ym]/mx*100).toFixed(0)}%"></i><span>${ymS(ym)}</span></div>`).join("")+(affPending?`<div class="bar pend"><b class="num m">${rs2(affPending)}</b><i style="height:${Math.min(100,affPending/mx*100).toFixed(0)}%"></i><span>${ymS(MTD.ym)}*</span></div>`:"");
-  $("affNote").textContent=`* ${MTD?ymL(MTD.ym):"This month"} is an estimate from month-to-date results. Sample members invested Rs ${nf.format(MEMBERS.reduce((a,m)=>a+m.amt,0))} between them.`;
+  $("affNote").textContent=ME?`* ${MTD?ymL(MTD.ym):"This month"} is an estimate from month-to-date results${AFF_DEP?", plus deposit commission waiting for its first month to close":""}. It's credited when the month closes.`+(ME.aff&&ME.aff.blocked?" Your affiliate account is on hold; contact support.":""):`* ${MTD?ymL(MTD.ym):"This month"} is an estimate from month-to-date results. Sample members invested Rs ${nf.format(MEMBERS.reduce((a,m)=>a+m.amt,0))} between them.`;
   $("memN").textContent=MEMBERS.length+" total";
-  $("members").innerHTML=MEMBERS.map(m=>`<div class="mem"><span class="av2">${m.n.slice(-1)}</span><div><p>${m.n}</p><small>Joined ${ymS(m.ym)}${m.id?" · "+B[m.id].name:""}</small></div><div class="r">${m.id?`<b class="num pos m">${rs2(m.com+m.pending)}</b><small>you earned</small>`:`<span class="pill n">Not invested</span>`}</div></div>`).join("");
+  $("members").innerHTML=MEMBERS.map(m=>`<div class="mem"><span class="av2">${esc(ME?m.n[0]:m.n.slice(-1))}</span><div><p>${esc(m.n)}</p><small>Joined ${ymS(m.ym)}${m.id?" · "+B[m.id].name:""}</small></div><div class="r">${m.id?`<b class="num pos m">${rs2(m.com+m.pending)}</b><small>you earned</small>`:`<span class="pill n">Not invested</span>`}</div></div>`).join("");
   renderLB("month");$$("#lbF button").forEach(b=>b.onclick=()=>{$$("#lbF button").forEach(x=>x.setAttribute("aria-pressed",x===b));renderLB(b.dataset.p)});
   const cc=()=>{const m=+$("ccM").value,a=+$("ccA").value,r=+$("ccR").value;$("ccMv").textContent=m;$("ccAv").textContent=rs(a);$("ccRv").textContent=r+"%";
     const mo=m*a*r/100*FEE*AFF;$("ccOut").textContent=rs2(mo);$("ccYr").textContent=rs(mo*12)};["ccM","ccA","ccR"].forEach(id=>$(id).oninput=cc);cc();
   const MSG=[["Short","Trying Capital 50 AI — they publish every month's result, wins and losses. Sign up with my link: "],["Detailed","Capital 50 AI runs six AI strategies (gold, crypto, e-commerce and more). You can see each strategy's full monthly record before you invest, minimum Rs 5,000, and they take 2.5% of profit only. Results can be negative, so read the record first. My link: "],["Urdu","Capital 50 AI par har mahine ka result publish hota hai — profit bhi, loss bhi. Rs 5,000 se shuru. Pehle record dekhein, phir faisla karein. Mera link: "]];
   $("msgs").innerHTML=MSG.map(([t,m],i)=>`<div class="msg"><div><b>${t}</b><p>${esc(m)}<span class="lk">${esc(refLink())}</span></p></div><button class="btn sm" data-msg="${i}">${icon("copy")}Copy</button></div>`).join("");
   $$("[data-msg]").forEach(b=>b.onclick=()=>copy(MSG[+b.dataset.msg][1]+refLink(),"Message copied"));
-  $("affTerms").innerHTML=["You earn 15% of the 2.5% platform fee charged on your members' monthly profit — nothing is taken from their deposits.","Commission is credited when each month closes and its results are published. No profit that month means no fee and no commission.",`A member counts as yours if they sign up within ${ATTR_DAYS} days of opening your link, or enter your code at sign-up.`,"No self-referrals, duplicate accounts or paid ads on our brand name. Abuse voids commission.",`Withdraw affiliate earnings from ${rs(MIN_AFF_PAYOUT)} once your identity is verified.`,"Never promise or guarantee returns. Misleading promotion voids commission and can close the affiliate account."].map(t=>`<li>${icon("circle-check")}<span>${t}</span></li>`).join("");
+  $("affTerms").innerHTML=[`You earn ${pctT(AFF)} of the 2.5% platform fee charged on your members' monthly profit — nothing is taken from their deposits.`,...(AFF_DEP?[`Plus ${pctT(AFF_DEP)} of each deposit your members make, paid by Capital 50 from its own money — never taken from their deposit. It's credited once that deposit's first month closes, and cancelled if they withdraw before then.`]:[]),"Commission is credited when each month closes and its results are published. No profit that month means no fee and no commission.",`A member counts as yours if they sign up within ${ATTR_DAYS} days of opening your link, or enter your code at sign-up.`,"No self-referrals, duplicate accounts or paid ads on our brand name. Abuse voids commission.",`Withdraw affiliate earnings from ${rs(MIN_AFF_PAYOUT)} once your identity is verified.`,"Never promise or guarantee returns. Misleading promotion voids commission and can close the affiliate account."].map(t=>`<li>${icon("circle-check")}<span>${t}</span></li>`).join("");
   $("shQr").onclick=qrSheet;$("shCard").onclick=inviteCard;$("editCode").onclick=editCodeSheet}
 
 /* =====================================================================
@@ -1172,7 +1179,7 @@ function initProfile(){renderProfile();
 /* =====================================================================
    SUPPORT
    ===================================================================== */
-const FAQ=[["When are monthly results added?","After each month closes, usually in the first week. You'll get an alert."],["What do I pay?","2.5% of profit each month. Nothing on deposits. No profit means no fee."],["How long do withdrawals take?","Processing times are published before launch. Withdrawals go only to accounts in your own name."],["Why do I need KYC?","Pakistan's anti-money-laundering rules require identity checks before money can leave an account."],["How does the affiliate program work?","You earn 15% of the 2.5% fee on your members' monthly profit, credited when the month closes."],["Can I lose money?","Yes. Some months are negative and past results do not predict future results."]];
+const FAQ=[["When are monthly results added?","After each month closes, usually in the first week. You'll get an alert."],["What do I pay?","2.5% of profit each month. Nothing on deposits. No profit means no fee."],["How long do withdrawals take?","Processing times are published before launch. Withdrawals go only to accounts in your own name."],["Why do I need KYC?","Pakistan's anti-money-laundering rules require identity checks before money can leave an account."],["How does the affiliate program work?",`You earn ${pctT(AFF)} of the 2.5% fee on your members' monthly profit, credited when the month closes.`+(AFF_DEP?` Plus ${pctT(AFF_DEP)} of their deposits, paid by Capital 50 (never taken from the deposit).`:"")],["Can I lose money?","Yes. Some months are negative and past results do not predict future results."]];
 function renderTickets(){$("tickets").innerHTML=ST.tickets.length?`<h4 class="label" style="margin:16px 0 6px">Your tickets</h4>`+ST.tickets.map(t=>`<div class="tk"><span class="pill ${t.status==="Open"?"live":""}">${t.status}</span><div><p>${esc(t.sub)}</p><small>#${t.id} · ${esc(t.cat)} · ${new Date(t.at).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</small></div></div>`).join(""):""}
 function initSupport(){$("faq").innerHTML=FAQ.map(([q,a])=>`<details><summary>${esc(q)}${icon("chevron-down")}</summary><p>${esc(a)}</p></details>`).join("");renderTickets();
   $("tForm").onsubmit=e=>{e.preventDefault();const s=$("tSub").value.trim(),m=$("tMsg").value.trim();if(s.length<4||m.length<10){toast("Add a subject and a few details");return}
@@ -1181,12 +1188,14 @@ function initSupport(){$("faq").innerHTML=FAQ.map(([q,a])=>`<details><summary>${
 /* =====================================================================
    PREFERENCES, NOTIFICATIONS, BOOT
    ===================================================================== */
-$$(".sw").forEach(s=>{const k="p_"+s.dataset.pref,v=store.get(k,null);if(v!=null)s.setAttribute("aria-checked",v);
-  s.onclick=()=>{const v=s.getAttribute("aria-checked")!=="true";s.setAttribute("aria-checked",v);store.set(k,String(v));if(s.dataset.pref==="hide")setHide(v);if(inited.profile)renderProfile();toast(v?"Turned on":"Turned off")}});
+$$(".sw").forEach(s=>{const k="p_"+s.dataset.pref,sv=ME&&ME.prefs?ME.prefs[s.dataset.pref]:undefined,v=sv!=null?String(sv):store.get(k,null);if(v!=null)s.setAttribute("aria-checked",v);
+  s.onclick=()=>{const v=s.getAttribute("aria-checked")!=="true";s.setAttribute("aria-checked",v);store.set(k,String(v));
+    if(ME)post("/api/profile/prefs",{key:s.dataset.pref,value:v}).then(r=>{if(!r.ok){s.setAttribute("aria-checked",!v);store.set(k,String(!v));toast(r.error)}});if(s.dataset.pref==="hide")setHide(v);if(inited.profile)renderProfile();toast(v?"Turned on":"Turned off")}});
 const NOTES=(()=>{const last=months[months.length-1],k=recAt("kitchen",last),top=BOTS.map(b=>({b,r:recAt(b.id,last)})).sort((a,b)=>b.r-a.r)[0];
   const n=[{i:"calendar",t:`${ymL(last)} results published`,s:`Kitchen Money AI ${pct(k)} · best: ${top.b.name} ${pct(top.r)}`,h:"#strategies"}];
   if(affByMonth[last])n.push({i:"gift",t:"Affiliate commission credited",s:`${rs2(affByMonth[last])} from your members' ${ymL(last)} fees`,h:"#affiliate"});
-  n.push({i:"users",t:"New member joined with your link",s:"Member 9 · not invested yet",h:"#affiliate"});
+  if(!ME)n.push({i:"users",t:"New member joined with your link",s:"Member 9 · not invested yet",h:"#affiliate"});
+  else if(ME.aff&&ME.aff.members[0]&&ME.aff.members[0].ym===new Date().toLocaleDateString("en-CA",{timeZone:"Asia/Karachi"}).slice(0,7))n.push({i:"users",t:"New member joined with your link",s:`${ME.aff.members[0].n} · ${ME.aff.members[0].id?"invested":"not invested yet"}`,h:"#affiliate"});
   if(MTD)n.push({i:"activity",t:`${ymL(MTD.ym)} so far`,s:BOTS.filter(b=>MTD[b.id]!=null).slice(0,3).map(b=>`${b.name.replace(" AI","")} ${pct(MTD[b.id])}`).join(" · "),h:"#overview"});
   if(!kycOK())n.push({i:"shield-alert",t:"Verify your identity",s:"Needed before withdrawals",h:"#kyc"});(ME&&ME.notices||[]).forEach(x=>n.push(x));return n})();
 let readN=store.get("read",false);$("bellDot").hidden=readN;

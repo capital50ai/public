@@ -1,9 +1,11 @@
+import { REF_COOKIE } from "@/lib/affiliate";
 import { isLive } from "@/lib/backend";
 import { authMessage, TOO_MANY_CODES } from "@/lib/auth-errors";
 import { clientIp, fail, readJson } from "@/lib/request";
 import { withinLimit } from "@/lib/security";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { cookies } from "next/headers";
 import { cleanFullName, cleanReferralCode, normalizeEmail, normalizePkPhone, passwordStrongEnough } from "@/lib/validate";
 
 export async function POST(req: Request) {
@@ -39,6 +41,8 @@ export async function POST(req: Request) {
     return fail(TOO_MANY_CODES, 429, "phone");
   if (existing) await admin.auth.admin.deleteUser(existing.user_id);
 
+  // First touch wins: an invite link opened in the last 30 days, else the code typed at sign-up.
+  const ref = cleanReferralCode((await cookies()).get(REF_COOKIE)?.value) ?? cleanReferralCode(body.ref) ?? "";
   const supabase = await createClient();
   const { error } = await supabase.auth.signUp({
     phone,
@@ -47,7 +51,7 @@ export async function POST(req: Request) {
       data: {
         full_name: fullName,
         email,
-        ref: cleanReferralCode(body.ref) ?? "",
+        ref,
         risk_ack_at: new Date().toISOString(),
       },
     },

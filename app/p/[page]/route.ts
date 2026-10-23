@@ -7,6 +7,7 @@ import { kycState } from "@/lib/kyc-server";
 import { jazzcashConfig, nowpaymentsConfig, paymentsMode } from "@/lib/payments/config";
 import { bankAccount } from "@/lib/payments/deposits";
 import { methodToClient } from "@/lib/payouts";
+import { affiliateCopy, type AffiliateRates } from "@/lib/affiliate";
 
 export const dynamic = "force-dynamic";
 
@@ -35,9 +36,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
     if (isLive()) {
       // Everything in one parallel round trip. RLS limits each read to the signed-in investor.
       const supabase = await createClient();
-      const [{ data: { user } }, profile, kyc, bank, holdings, entries, closes, pending, methods, withdrawals] = await Promise.all([
+      const [{ data: { user } }, profile, kyc, bank, holdings, entries, closes, pending, methods, withdrawals, aff] = await Promise.all([
         supabase.auth.getUser(),
-        supabase.from("profiles").select("full_name, phone, email, city, referral_code, created_at").maybeSingle(),
+        supabase.from("profiles").select("full_name, phone, email, city, referral_code, created_at, prefs, leaderboard_opt_in").maybeSingle(),
         kycState(supabase).catch((e: Error) => e),
         bankAccount(),
         supabase.from("holdings").select("id, strategies(slug)").returns<{ id: string; strategies: { slug: string } }[]>(),
@@ -54,6 +55,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
         supabase.from("payout_methods").select("id, type, account_hint, title, bank, ready_at").is("disabled_at", null).order("created_at"),
         supabase.from("withdrawals").select("amount, status, reason, created_at, updated_at")
           .in("status", ["requested", "approved", "rejected"]).order("created_at", { ascending: false }).limit(30),
+        supabase.rpc("my_affiliate_summary"),
       ]);
       if (!user) return Response.redirect(new URL("/auth.html", req.url), 303);
       const p = profile.data;
@@ -72,6 +74,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
         city: p.city ?? "",
         since: String(p.created_at).slice(0, 7),
         code: p.referral_code,
+        prefs: { ...(p.prefs as Record<string, unknown>), lb: p.leaderboard_opt_in, "2fa": true, wlock: true },
+        aff: aff.error ? null : aff.data,
         kyc,
         pay: {
           mode: paymentsMode(),
@@ -84,6 +88,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
         },
       };
 
+      // Affiliate figures are optional: if they can't load, the rest of the dashboard still works.
+      if (aff.error) console.error("dashboard: affiliate summary failed", aff.error.message);
       const failed = holdings.error || entries.error || closes.error || pending.error || methods.error || withdrawals.error;
       if (failed) {
         console.error("dashboard: account load failed", failed.message);
@@ -115,6 +121,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
       __C50_ACCOUNT__: scriptJson(account),
     });
     if (account) html = html.split(PREVIEW_RIBBON).join(LIVE_RIBBON);
+    const rates = (me?.aff as { rates?: AffiliateRates } | null)?.rates;
+    if (rates) html = affiliateCopy(html, { fee: Number(rates.fee), dep: Number(rates.dep) });
     return new Response(html, { headers: { ...HTML, "cache-control": "private, no-store" } });
   }
 

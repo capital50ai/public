@@ -54,6 +54,19 @@ do $$ declare n int; v numeric; begin
   assert (select display_name from public.affiliate_leaderboard('2000-01-01')) like 'Affiliate #%', 'anonymous by default';
   update public.profiles set leaderboard_opt_in = true where user_id = '00000000-0000-0000-0000-0000000000c1';
   assert (select display_name from public.affiliate_leaderboard('2000-01-01')) = 'Asad M.', 'opt-in name';
+  -- the hub summary: masked names, own row labelled, nothing about member balances
+  declare j jsonb := public.affiliate_summary('00000000-0000-0000-0000-0000000000c1'); begin
+    assert (j->>'total')::numeric = 37.50, 'summary total ' || (j->>'total');
+    assert (j->>'withdrawable')::numeric = 37.50, 'summary withdrawable ' || (j->>'withdrawable');
+    assert jsonb_array_length(j->'members') = 3, 'summary members';
+    assert (select count(*) from jsonb_array_elements(j->'members') x where x->>'n' = 'Bilal A.' and (x->>'com')::numeric = 22.50 and x->>'id' = 'gold') = 1, 'member row ' || (j->'members')::text;
+    assert (select count(*) from jsonb_array_elements(j->'members') x where x ? 'amt' or x ? 'val') = 0, 'member balances leaked';
+    assert j->'lb'->'all'->0->>'name' = 'You · ASAD2026' and (j->'lb'->'all'->0->>'you')::boolean, 'own leaderboard row ' || (j->'lb'->'all')::text;
+    assert (j->'byMonth'->>'2026-09')::numeric = 37.50, 'by month';
+    assert (j->'rates'->>'fee')::numeric = 0.15 and (j->'rates'->>'dep')::numeric = 0, 'rates';
+    j := public.affiliate_summary('00000000-0000-0000-0000-0000000000c2');
+    assert (j->'lb'->'all'->-1->>'you')::boolean and (j->'lb'->'all'->-1->>'com')::numeric = 0 and (j->'lb'->'all'->-1->>'rank')::int = 2, 'non-earner row ' || (j->'lb'->'all')::text;
+  end;
   -- void a credited commission: reversing adjustment, leaderboard drops it
   perform public.void_commission((select id from public.affiliate_commissions where member_id = '00000000-0000-0000-0000-0000000000c3'), '00000000-0000-0000-0000-0000000000f1', 'Duplicate account found');
   assert public.ledger_balance('00000000-0000-0000-0000-0000000000c1') = 22.50, 'balance after void';
@@ -156,6 +169,7 @@ set local role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000c7', true);
 do $$ declare n int; begin
   select count(*) into n from public.affiliate_codes; assert n = 1, 'sees ' || n || ' codes';
+  assert (public.my_affiliate_summary()->>'withdrawable')::numeric = 0, 'own summary';
   begin perform public.set_referral_code('00000000-0000-0000-0000-0000000000c7', 'HACKED'); raise exception 'code callable';
   exception when insufficient_privilege then null; end;
 end $$;

@@ -36,6 +36,16 @@ describe("buildAccount", () => {
     expect(acc.hold.gold.val).toBe(8000);
     expect(acc.hold.crypto.val).toBe(4000);
   });
+  it("includes the affiliate part of a withdrawal in its one line, outside the holdings", () => {
+    const acc = buildAccount([
+      row({ amount: 10000, meta: { day: 1 } }),
+      row({ holding_id: null, type: "affiliate_commission", amount: 1500, ref_id: "c1" }),
+      row({ holding_id: null, type: "affiliate_payout", amount: -1500, ym: "2026-10-01", ref_id: "w2", created_at: "2026-10-21T08:00:00Z" }),
+      row({ type: "withdrawal", amount: -500, ym: "2026-10-01", ref_id: "w2", created_at: "2026-10-21T08:00:00Z", meta: { source: "withdrawal" } }),
+    ], slugOf, null, "2026-09");
+    expect(acc.events.filter((e) => e.t === "out")).toEqual([{ t: "out", ym: "2026-10", day: 21, id: "", amt: -2000 }]);
+    expect(acc.hold.gold.val).toBe(9500);
+  });
   it("shows an empty account as one zero month", () => {
     expect(buildAccount([], slugOf, null, "2026-09").ledger).toEqual([{ ym: "2026-09", bal: 0, inv: 0, profit: 0, fee: 0 }]);
   });

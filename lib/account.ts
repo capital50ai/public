@@ -47,6 +47,19 @@ export function buildAccount(rows: LedgerRow[], slugOf: Map<string, string>, las
   const payouts = new Map<string, Event>(); // one history line per withdrawal, however many holdings it came from
 
   for (const row of rows) {
+    if (row.type === "affiliate_payout" && row.ref_id) {
+      // The affiliate part of a withdrawal: not part of any holding, but the same payout line.
+      const amt = Number(row.amount);
+      const e = payouts.get(row.ref_id);
+      if (e) e.amt = cents(e.amt + amt);
+      else {
+        const { ym, day } = pkDay(row.created_at);
+        const ev: Event = { t: "out", ym, day, id: "", amt };
+        payouts.set(row.ref_id, ev);
+        events.push(ev);
+      }
+      continue;
+    }
     const slug = row.holding_id ? slugOf.get(row.holding_id) : undefined;
     if (!slug) continue;
     const amt = Number(row.amount);
