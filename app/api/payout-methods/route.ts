@@ -2,7 +2,7 @@ import { isLive } from "@/lib/backend";
 import { dataKeyConfigured, encrypt, keyedHash } from "@/lib/crypto";
 import { accountError, accountHint, methodToClient, nameMatch, normalizeAccount, PAYOUT_TYPES, type PayoutType } from "@/lib/payouts";
 import { clientIp, fail, readJson } from "@/lib/request";
-import { audit, withinLimit } from "@/lib/security";
+import { accountFrozen, audit, ON_HOLD, withinLimit } from "@/lib/security";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,6 +16,7 @@ export async function POST(req: Request) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return fail("Please log in again.", 401);
   if (!(await withinLimit(`payout-method:${user.id}`, 10, 86400))) return fail("Too many changes today. Try again tomorrow.", 429);
+  if (await accountFrozen(user.id)) return fail(ON_HOLD, 403);
 
   const body = await readJson(req);
   const type = body.type as PayoutType;

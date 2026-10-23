@@ -16,6 +16,18 @@ export async function withinLimit(key: string, max: number, windowSeconds: numbe
   return data === true;
 }
 
+// Staff can put an account on hold (fraud, dispute): no deposits, payout changes or withdrawals.
+export const ON_HOLD = "Your account is on hold. Please contact support.";
+export async function accountFrozen(userId: string): Promise<boolean> {
+  const { data, error } = await createAdminClient().from("profiles").select("frozen_at").eq("user_id", userId).maybeSingle();
+  if (error) {
+    // Before the affiliates/freeze database update runs, the column doesn't exist: treat as not frozen.
+    if (!/frozen_at/.test(error.message)) console.error("frozen check failed", error.message);
+    return false;
+  }
+  return !!data?.frozen_at;
+}
+
 export async function audit(entry: {
   actorId?: string | null;
   action: string;

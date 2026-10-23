@@ -22,7 +22,7 @@ The server fills in the strategy returns from the `strategy_returns` table.
   idempotent (re-running is a no-op), months close in order, needs a *published* return.
 - Dashboard overview, strategies, wallet, transaction history and statements read the user's ledger.
 - Demo account holds the preview's sample deposits with real closes for Jul–Sep 2026
-  (Rs 162,209.38, identical to the preview). Remove before launch: `select public.purge_demo_data();`
+  (Rs 162,209.38, identical to the preview). Remove before launch: Staff → Settings → Launch checklist.
 
 ## Phase 3 (identity verification)
 
@@ -89,6 +89,45 @@ returns taken from the bundled records. This keeps the shared demo link working 
   with a reason (shown to the investor), mark paid with a transaction reference. `pay_withdrawal()` writes the
   ledger, split across holdings by value, dated the current month; it waits until last month is closed.
 
+## Phase 6 (affiliates)
+
+- Invite links are `/r/CODE`: the first link opened is remembered for 30 days and wins at sign-up.
+  Investors can change their code (4–12 letters/numbers); old codes keep pointing to them.
+- Commission is company money, never taken from a member:
+  - fee share: `affiliate_fee_share_rate` (default 15%) of the 2.5% fee on a member's monthly profit,
+    credited inside `close_month()`;
+  - deposit commission: `affiliate_deposit_rate` (default 0% = off, max 10%) of each member deposit,
+    pending until the deposit's first month closes, cancelled if the member withdraws before then.
+- Self-referrals (same verified CNIC) and blocked affiliates earn nothing. Staff can void a commission;
+  a credited one is reversed with a new ledger entry.
+- The affiliate hub, leaderboard (from credited commissions only; names only if the affiliate opts in)
+  and every place the page states the terms follow the owner's rates.
+- Affiliate earnings are withdrawn with the normal withdrawal flow (paid out before investments).
+
+## Phase 7 (staff admin panel)
+
+`/admin` (email + password + authenticator). Every action is role-checked in the database and audit-logged.
+
+| Section | Who | What |
+|---|---|---|
+| Overview | all staff | totals, queues, daily reconciliation result |
+| Returns | owner, compliance (owner publishes) | month-to-date / published returns with a source note; preview and close a month (owner) |
+| Investors | all staff (freeze: owner, compliance) | search, full account view, freeze, block affiliate |
+| Identity checks, Deposits, Withdrawals | as before | |
+| Affiliates | all staff (void: owner, compliance, finance) | top affiliates, commissions, void |
+| Tickets | all staff | investor support inbox and replies |
+| Audit log | owner, compliance | every recorded action, filterable |
+| Settings | owner | commission rates, two-approval limit, bank account, staff, launch checklist |
+
+- Daily reconciliation (`run_reconciliation()`): deposits, withdrawals, commissions and month closes are
+  each checked against the ledger; every fee is 2.5% of profit; no negative balances. Runs from Vercel Cron
+  (`/api/cron/reconcile`, needs `CRON_SECRET`) and from the Overview page.
+- Investors: change password (current password + SMS code; other devices are logged out), log out other
+  devices, edit email/city, nominee (CNIC encrypted), download my data, account closure request (a ticket).
+- Launch: Settings → remove the demo account, then "Reset all test money" (refuses if any live-mode
+  payment exists; accounts, identity checks and payout methods stay).
+- Security headers on every page: HSTS, no framing, nosniff, referrer and permissions policies.
+
 ## Page delivery (mobile speed)
 
 `scripts/build-assets.mjs` runs before every build: it splits each template into a small HTML shell
@@ -101,6 +140,6 @@ The dashboard's server reads (login, profile, KYC, balances) run in one parallel
 ```bash
 npm run dev              # local server
 npm run gen-seed         # regenerate 0002 from data/records.json
-npm run test:db          # migrations twice + SQL tests for every phase on a local Postgres
+npm run test:db          # migrations twice + SQL tests for every phase (1–7) on a local Postgres
 npm test                 # unit tests (payment signatures, account builder)
 ```

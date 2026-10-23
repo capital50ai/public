@@ -10,7 +10,7 @@ type Overview = {
   investors: number; verified: number; invested: number; affiliate_owed: number; deposits_month: number; paid_out_month: number;
   kyc_review: number; bank_pending: number; wd_open: number; wd_open_amount: number; tickets_open: number; frozen: number;
   last_close: string | null; fees_total: number; commission_total: number; demo_present: boolean;
-  reconcile: { ok: boolean; at: string; checks: { name: string; ok: boolean; detail: string }[] } | null;
+  reconcile: { ok: boolean; at: string; stale: boolean; checks: { name: string; ok: boolean; detail: string }[] } | null;
 };
 
 export default async function AdminOverview({ searchParams }: { searchParams: Promise<{ done?: string; error?: string }> }) {
@@ -20,7 +20,7 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
   if (e || !data) throw new Error(`overview failed: ${e?.message}`);
   const o = data as Overview;
   const r = o.reconcile;
-  const stale = !r || Date.parse(r.at) < Date.now() - 36 * 3600e3;
+  const stale = !r || r.stale;
 
   return (
     <div className="space-y-6">

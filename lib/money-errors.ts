@@ -4,7 +4,7 @@ import "server-only";
 const PLAIN = [
   "Verify your identity", "Confirm with the code", "Choose one of your payout methods", "This payout method unlocks",
   "This account is not in your verified name", "Minimum withdrawal", "That is more than your available balance",
-  "This withdrawal is already", "Withdrawal not found", "Invalid amount",
+  "This withdrawal is already", "Withdrawal not found", "Invalid amount", "Your account is on hold",
 ];
 
 export function moneyMessage(err: { message?: string } | null, fallback = "Something went wrong. Please try again."): string {

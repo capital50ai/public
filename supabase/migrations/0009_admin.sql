@@ -466,7 +466,8 @@ language sql stable security definer set search_path = public as $$
     'last_close',       (select to_char(max(ym), 'YYYY-MM') from month_closes),
     'fees_total',       (select coalesce(-sum(amount), 0) from ledger_entries where type = 'fee'),
     'commission_total', (select coalesce(sum(commission_amount), 0) from affiliate_commissions where status = 'credited'),
-    'reconcile',        (select jsonb_build_object('ok', ok, 'at', ran_at, 'checks', checks) from reconciliation_runs order by ran_at desc limit 1),
+    'reconcile',        (select jsonb_build_object('ok', ok, 'at', ran_at, 'checks', checks, 'stale', ran_at < now() - interval '36 hours')
+                           from reconciliation_runs order by ran_at desc limit 1),
     'demo_present',     exists (select 1 from auth.users where phone = '923001234567'))
 $$;
 

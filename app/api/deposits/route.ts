@@ -1,6 +1,6 @@
 import { isLive } from "@/lib/backend";
 import { clientIp, fail, readJson } from "@/lib/request";
-import { audit, withinLimit } from "@/lib/security";
+import { accountFrozen, audit, ON_HOLD, withinLimit } from "@/lib/security";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { jazzcashConfig, nowpaymentsConfig, paymentsMode } from "@/lib/payments/config";
@@ -34,6 +34,7 @@ export async function POST(req: Request) {
   if (amount < Number(strategy.min_deposit))
     return fail(`Minimum deposit is Rs ${Number(strategy.min_deposit).toLocaleString("en-US")}.`);
   if (!(await withinLimit(`deposit:${user.id}`, 10, 3600))) return fail("Too many deposit attempts. Try again in an hour.", 429);
+  if (await accountFrozen(user.id)) return fail(ON_HOLD, 403);
 
   const mode = paymentsMode();
   const origin = new URL(req.url).origin;
