@@ -8,6 +8,7 @@ import { jazzcashConfig, nowpaymentsConfig, paymentsMode } from "@/lib/payments/
 import { bankAccount } from "@/lib/payments/deposits";
 import { methodToClient } from "@/lib/payouts";
 import { affiliateCopy, type AffiliateRates } from "@/lib/affiliate";
+import { TICKET_COLS, ticketToClient } from "@/lib/tickets";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
     if (isLive()) {
       // Everything in one parallel round trip. RLS limits each read to the signed-in investor.
       const supabase = await createClient();
-      const [{ data: { user } }, profile, kyc, bank, holdings, entries, closes, pending, methods, withdrawals, aff] = await Promise.all([
+      const [{ data: { user } }, profile, kyc, bank, holdings, entries, closes, pending, methods, withdrawals, aff, tickets] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from("profiles").select("full_name, phone, email, city, referral_code, created_at, prefs, leaderboard_opt_in").maybeSingle(),
         kycState(supabase).catch((e: Error) => e),
@@ -56,6 +57,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
         supabase.from("withdrawals").select("amount, status, reason, created_at, updated_at")
           .in("status", ["requested", "approved", "rejected"]).order("created_at", { ascending: false }).limit(30),
         supabase.rpc("my_affiliate_summary"),
+        supabase.from("tickets").select(TICKET_COLS).order("created_at", { ascending: false }).limit(20),
       ]);
       if (!user) return Response.redirect(new URL("/auth.html", req.url), 303);
       const p = profile.data;
@@ -90,7 +92,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
 
       // Affiliate figures are optional: if they can't load, the rest of the dashboard still works.
       if (aff.error) console.error("dashboard: affiliate summary failed", aff.error.message);
-      const failed = holdings.error || entries.error || closes.error || pending.error || methods.error || withdrawals.error;
+      const failed = holdings.error || entries.error || closes.error || pending.error || methods.error || withdrawals.error || tickets.error;
       if (failed) {
         console.error("dashboard: account load failed", failed.message);
         return new Response("We couldn't load your account. Please refresh in a moment.", { status: 503 });
@@ -105,6 +107,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ page: st
       me.notices = withdrawals.data
         .filter((w) => w.status === "rejected" && Date.parse(w.updated_at) > Date.now() - 30 * 864e5)
         .map((w) => ({ i: "x", t: "Withdrawal not approved", s: `Rs ${Number(w.amount).toLocaleString("en-US")}: ${w.reason ?? ""}`, h: "#wallet" }));
+      me.tickets = tickets.data.map((t) => ticketToClient(t as Parameters<typeof ticketToClient>[0]));
+      for (const t of tickets.data.filter((t) => t.status === "answered"))
+        (me.notices as object[]).push({ i: "mail", t: "Support replied", s: `#${t.ref} · ${t.subject}`, h: "#support" });
       for (const w of open) {
         const [y, m, day] = new Date(w.created_at).toLocaleDateString("en-CA", { timeZone: "Asia/Karachi" }).split("-");
         account.events.unshift({ t: "wd", ym: `${y}-${m}`, day: Number(day), id: "", amt: -Number(w.amount) });

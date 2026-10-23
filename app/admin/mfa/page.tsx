@@ -15,7 +15,7 @@ export default function StaffMfa() {
       const r = await fetch("/api/admin/mfa");
       if (r.status === 401) return location.assign("/admin/login");
       const j = await r.json();
-      if (j.aal2) return location.assign("/admin/kyc");
+      if (j.aal2) return location.assign("/admin");
       if (j.enrolled) return setState("verify");
       const e = await fetch("/api/admin/mfa/enroll", { method: "POST" });
       const s = await e.json();

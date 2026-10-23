@@ -23,5 +23,5 @@ export async function POST(req: Request) {
     actorId: staff.userId, action: verified ? "staff.login_mfa" : "staff.mfa_enrolled",
     entity: "auth.users", entityId: staff.userId, ip: clientIp(req),
   });
-  return Response.json({ ok: true, next: "/admin/kyc" });
+  return Response.json({ ok: true, next: "/admin" });
 }

@@ -681,7 +681,7 @@ a.act{text-decoration:none;color:var(--muted)}
         <section class="card s7 rv">
           <div class="ch"><h3><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /> <path d="M12 7v2" /> <path d="M12 13h.01" /></svg>New ticket</h3></div>
           <form id="tForm" class="tform" novalidate>
-            <select id="tCat" class="sel"><option>Deposit</option><option>Withdrawal</option><option>Verification (KYC)</option><option>Affiliate</option><option>Account</option><option>Other</option></select>
+            <select id="tCat" class="sel"><option>Deposit</option><option>Withdrawal</option><option>Verification (KYC)</option><option>Affiliate</option><option>Account</option><option>Account closure</option><option>Other</option></select>
             <input id="tSub" class="inp" placeholder="Subject" maxlength="80">
             <textarea id="tMsg" class="inp" rows="4" placeholder="Tell us what happened" maxlength="1500"></textarea>
             <button class="btn pri" type="submit">Send ticket</button>
@@ -753,7 +753,7 @@ const ST={
   profile:ME?{name:ME.name,phone:ME.phone,email:ME.email,city:ME.city,since:ME.since}:store.get("profile",{name:firstName==="Investor"?"":firstName,phone:"",email:"",city:"",since:"2026-07"}),
   kyc:ME?ME.kyc:store.get("kyc",{status:"none",step:0,data:{},files:{}}),
   methods:ME?ME.methods:store.get("methods",[]),
-  tickets:store.get("tickets",[]),
+  tickets:ME?ME.tickets||[]:store.get("tickets",[]),
   code:ME?ME.code:store.get("code",null),
   nominee:store.get("nominee",null)
 };
@@ -1180,9 +1180,22 @@ function initProfile(){renderProfile();
    SUPPORT
    ===================================================================== */
 const FAQ=[["When are monthly results added?","After each month closes, usually in the first week. You'll get an alert."],["What do I pay?","2.5% of profit each month. Nothing on deposits. No profit means no fee."],["How long do withdrawals take?","Processing times are published before launch. Withdrawals go only to accounts in your own name."],["Why do I need KYC?","Pakistan's anti-money-laundering rules require identity checks before money can leave an account."],["How does the affiliate program work?",`You earn ${pctT(AFF)} of the 2.5% fee on your members' monthly profit, credited when the month closes.`+(AFF_DEP?` Plus ${pctT(AFF_DEP)} of their deposits, paid by Capital 50 (never taken from the deposit).`:"")],["Can I lose money?","Yes. Some months are negative and past results do not predict future results."]];
-function renderTickets(){$("tickets").innerHTML=ST.tickets.length?`<h4 class="label" style="margin:16px 0 6px">Your tickets</h4>`+ST.tickets.map(t=>`<div class="tk"><span class="pill ${t.status==="Open"?"live":""}">${t.status}</span><div><p>${esc(t.sub)}</p><small>#${t.id} · ${esc(t.cat)} · ${new Date(t.at).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</small></div></div>`).join(""):""}
+const TK_ST={open:"Open",answered:"Replied",closed:"Closed"};
+function renderTickets(){$("tickets").innerHTML=ST.tickets.length?`<h4 class="label" style="margin:16px 0 6px">Your tickets</h4>`+ST.tickets.map((t,i)=>{const st=TK_ST[t.status]||t.status;return`<div class="tk"${ME?` data-tk="${i}" role="button" tabindex="0" style="cursor:pointer"`:""}><span class="pill ${st==="Open"||st==="Replied"?"live":""}">${st}</span><div><p>${esc(t.sub)}</p><small>#${esc(t.ref||t.id)} · ${esc(t.cat)} · ${new Date(t.at).toLocaleDateString("en-GB",{day:"numeric",month:"short"})}</small></div></div>`}).join(""):"";
+  $$("[data-tk]").forEach(el=>el.onclick=()=>ticketSheet(ST.tickets[+el.dataset.tk]))}
+function ticketSheet(t){const when=x=>new Date(x).toLocaleString("en-GB",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Karachi"});
+  open(`<div class="dh"><h3>${esc(t.sub)}</h3><button class="ib" data-x aria-label="Close">${icon("x")}</button></div><p class="label">#${esc(t.ref)} · ${esc(t.cat)} · ${TK_ST[t.status]||""}</p>`+
+    t.msgs.map(m=>`<div class="msg" style="margin-top:10px;${m.s?"border-color:rgba(63,216,232,.35)":""}"><div><b>${m.s?"Capital 50 support":"You"}</b><p style="white-space:pre-wrap">${esc(m.b)}</p><small class="label">${when(m.at)}</small></div></div>`).join("")+
+    (t.status==="closed"?`<p class="fine">This ticket is closed. Open a new one if you need more help.</p>`:
+    `<textarea id="tkR" class="inp" rows="3" maxlength="1500" placeholder="Reply" style="margin-top:12px"></textarea><button class="btn pri full" id="tkSend" style="margin-top:8px">Send reply</button><button class="btn full" id="tkClose" style="margin-top:8px">Close ticket</button>`),"drawer");
+  if(t.status==="closed")return;
+  $("tkSend").onclick=()=>{const b=$("tkR").value.trim();if(!b){toast("Write a message");return}$("tkSend").disabled=true;
+    post(`/api/tickets/${t.id}/reply`,{message:b}).then(r=>{$("tkSend").disabled=false;if(!r.ok){toast(r.error);return}t.msgs.push({s:false,b,at:Date.now()});t.status="open";renderTickets();ticketSheet(t);toast("Reply sent")})};
+  $("tkClose").onclick=()=>post(`/api/tickets/${t.id}/close`,{}).then(r=>{if(!r.ok){toast(r.error);return}t.status="closed";renderTickets();close();toast("Ticket closed")})}
 function initSupport(){$("faq").innerHTML=FAQ.map(([q,a])=>`<details><summary>${esc(q)}${icon("chevron-down")}</summary><p>${esc(a)}</p></details>`).join("");renderTickets();
   $("tForm").onsubmit=e=>{e.preventDefault();const s=$("tSub").value.trim(),m=$("tMsg").value.trim();if(s.length<4||m.length<10){toast("Add a subject and a few details");return}
+    if(ME){const b=$("tForm").querySelector("button");b.disabled=true;post("/api/tickets",{category:$("tCat").value,subject:s,message:m}).then(r=>{b.disabled=false;if(!r.ok){toast(r.error);return}
+      ST.tickets.unshift(r.ticket);$("tForm").reset();renderTickets();toast("Ticket sent — we'll reply within one business day")});return}
     ST.tickets.unshift({id:"C50-"+String(Date.now()).slice(-6),cat:$("tCat").value,sub:s,msg:m,status:"Open",at:Date.now()});save("tickets");$("tForm").reset();renderTickets();toast("Ticket sent — we'll reply within one business day")}}
 
 /* =====================================================================
